@@ -1,0 +1,95 @@
+# The west manifest file for upstream Zephyr.
+#
+# The per-installation west configuration file, .west/config, sets the
+# path to the project containing this file in the [manifest] section's
+# "path" variable.
+#
+# You are free to create your own manifest files and put them in any
+# repository you want, to create your own custom Zephyr installations.
+# For example, you could create a manifest file in your own out of
+# tree application directory, which would pull this zephyr repository
+# in as an ordinary project.
+#
+# You can pass your manifest repositories to west init when creating a
+# new Zephyr installation. See the west documentation for more
+# information.
+
+manifest:
+  defaults:
+    remote: upstream
+
+  remotes:
+    - name: upstream
+      url-base: https://github.com/zephyrproject-rtos
+    - name: babblesim
+      url-base: https://github.com/BabbleSim
+
+  group-filter: [-babblesim, -optional]
+
+  #
+  # Please add items below based on alphabetical order
+  projects:
+    - name: acpica
+      revision: 0333c2af13179f9b33d495cf7cb9a509f751cbb1
+      path: modules/lib/acpica
+    - name: canopennode
+      revision: dec12fa3f0d790cafa8414a4c2930ea71ab72ffd
+      path: modules/lib/canopennode
+    - name: cmsis
+      revision: 5a00331455dd74e31e80efa383a489faea0590e3
+      path: modules/hal/cmsis
+      groups:
+        - hal
+    - name: edtt
+      revision: 64e5105ad82390164fb73fc654be3f73a608209a
+      path: tools/edtt
+      groups:
+        - tools
+    - name: fatfs
+      revision: 427159bf95ea49b7680facffaa29ad506b42709b
+      path: modules/fs/fatfs
+      groups:
+        - fs
+    - name: hal_st
+      revision: fb8e79d1a261fd02aadff7c142729f1954163cf3
+      path: modules/hal/st
+      groups:
+        - hal
+    - name: hal_stm32
+      revision: 89ef0a3383edebf661073073bcdf6e2836fe90ee
+      path: modules/hal/stm32
+      groups:
+        - hal
+    - name: littlefs
+      path: modules/fs/littlefs
+      groups:
+        - fs
+      revision: ca583fd297ceb48bced3c2548600dc615d67af24
+    - name: openthread
+      revision: d62167ee34b091e7025c9ec2820aae71e17a3944
+      path: modules/lib/openthread
+    - name: percepio
+      path: modules/debug/percepio
+      revision: a3728efccc47dd372f40e6313589ca4c5cc7d5e9
+      groups:
+        - debug
+    - name: picolibc
+      path: modules/lib/picolibc
+      revision: d07c38ff051386f8e09a143ea0a6c1d6d66dd1d8
+    - name: segger
+      revision: 9d0191285956cef43daf411edc2f1a7788346def
+      path: modules/debug/segger
+      groups:
+        - debug
+    - name: tinycrypt
+      revision: 3e9a49d2672ec01435ffbf0d788db6d95ef28de0
+      path: modules/crypto/tinycrypt
+      groups:
+        - crypto
+    - name: zcbor
+      revision: 67fd8bb88d3136738661fa8bb5f9989103f4599e
+      path: modules/lib/zcbor
+  self:
+    path: zephyr
+    west-commands: scripts/west-commands.yml
+    import: submanifests

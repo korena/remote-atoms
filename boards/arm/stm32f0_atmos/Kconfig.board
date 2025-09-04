@@ -1,0 +1,8 @@
+# STM32F0DISCOVERY development board with STM32F051R8 MCU configuration
+
+# Copyright (c) 2018 Nathan Tsoi <nathan@vertile.com>
+# SPDX-License-Identifier: Apache-2.0
+
+config BOARD_STM32F0_ATMOS
+	bool "STM32F0ATMOS Atmospherics Board"
+	depends on SOC_STM32F030X8
