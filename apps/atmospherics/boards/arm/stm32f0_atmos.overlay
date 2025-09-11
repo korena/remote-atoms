@@ -3,5 +3,34 @@
         zephyr,console = &usart1;
         zephyr,shell-uart = &usart1;
     };
+    aliases {
+        bme280 = &bme280;
+    };
 };
 
+&gpiof {status = "okay";};
+
+&i2c1 {
+  status = "disabled";
+  pinctrl-0 = <&i2c1_scl_pb6 &i2c1_sda_pb7>;
+  pinctrl-names = "default";
+};
+
+&i2c2 {
+    status = "okay";
+    pinctrl-0 = <&i2c2_scl_pb10 &i2c2_sda_pb11>;
+    pinctrl-names = "default";
+    sgp40: sgp40@59 {
+        compatible = "sensirion,sgp40";
+        label = "SGP40";
+        status = "okay";
+        reg = <0x59>;
+        enable-selftest;
+    };
+    bme280: bme280@76 {
+        compatible = "bosch,bme280";
+        label = "BME280";
+        reg = <0x76>;
+        status = "okay";
+    };
+};
