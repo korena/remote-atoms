@@ -10,7 +10,7 @@ error_t init_bme280_device(void) {
 
   if (bme280_dev == NULL) {
     /* No such node, or the node does not have status "okay". */
-    printk("\nError: no device found.\n");
+    printk("\nError: no BME280 device found.\n");
     return ENODEV;
   }
 

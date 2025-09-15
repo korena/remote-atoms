@@ -1,0 +1,8 @@
+# Copyright (c) 2019, Linaro Limited
+# SPDX-License-Identifier: Apache-2.0
+
+description: Sensirion SCD41 integrated environmental sensor
+
+compatible: "sensirion,scd41"
+
+include: [sensor-device.yaml, i2c-device.yaml]

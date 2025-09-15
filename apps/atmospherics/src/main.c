@@ -15,6 +15,7 @@
 #include <zephyr/kernel.h>
 
 #include "bme_sensor.h"
+#include "scd41_sensor.h"
 #include "sgp_sensor.h"
 
 /* 1000 msec = 1 sec */

@@ -1,16 +1,30 @@
-#include <stdint.h>
-#include <zephyr/drivers/gpio.h>
+#include <zephyr/device.h>
+#include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/init.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/__assert.h>
 #include <zephyr/sys/byteorder.h>
+#include <zephyr/types.h>
 
 #include "scd41.h"
 #include <errno.h>
 #include <zephyr/logging/log.h>
 
+// sensirion ported defines
+#define SENSIRION_WORD_SIZE (2)
+#define NO_ERROR (0)
+#define CRC8_POLYNOMIAL (0x31)
+#define CRC8_INIT (0xFF)
+#define CRC_ERROR (1)
+#define I2C_BUS_ERROR (2)
+#define I2C_NACK_ERROR (3)
+#define BYTE_NUM_ERROR (4)
+#define CRC8_LEN (0)
+
 LOG_MODULE_REGISTER(SCD41, CONFIG_SENSOR_LOG_LEVEL);
+
+#define DT_DRV_COMPAT sensiron_scd41
 
 #if DT_NUM_INST_STATUS_OKAY(DT_DRV_COMPAT) == 0
 #warning "SCD41 driver enabled without any devices"
@@ -25,32 +39,30 @@ struct scd41_data {
 };
 
 struct scd41_config {
-  struct i2c_dt_spec i2c;
+  struct i2c_dt_spec spec;
   const struct scd41_bus_io *bus_io;
 };
 
-// sensirion ported defines
-#define SENSIRION_WORD_SIZE (2)
-#define NO_ERROR (0)
-#define CRC8_POLYNOMIAL (0x31)
-#define CRC8_INIT (0xFF)
-#define CRC_ERROR (1)
-#define CRC8_LEN (0)
-
-// Sensor API
-// ---------------------------------------------------------------------------------------------------
-static int scd41_chip_init(const struct device *dev);
 static int scd41_sample_fetch(const struct device *dev,
                               enum sensor_channel chan);
 static int scd41_channel_get(const struct device *dev, enum sensor_channel chan,
                              struct sensor_value *val);
+static const struct sensor_driver_api sensor_scd41_api = {
+    .sample_fetch = scd41_sample_fetch,
+    .channel_get = scd41_channel_get,
+};
+
+// Sensor basic API
+// ---------------------------------------------------------------------------------------------------
 static inline int scd41_bus_check(const struct device *dev);
-// Private functions
-// --------------------------------------------------------------------------------------------
 static inline int scd41_reg_read(const struct device *dev, uint8_t start,
                                  uint8_t *buf, int size);
 static inline int scd41_reg_write(const struct device *dev, uint8_t reg,
                                   uint8_t val);
+// Private functions
+// --------------------------------------------------------------------------------------------
+static int scd41_chip_init(const struct device *dev);
+
 static uint16_t scd41_add_command16_to_buffer(uint8_t *buffer, uint16_t offset,
                                               uint16_t command);
 static int16_t scd41_i2c_read_data_inplace(const struct device *dev,
@@ -65,20 +77,42 @@ static void scd41_copy_bytes(const uint8_t *source, uint8_t *destination,
 static int16_t scd41_get_serial_number(const struct device *dev,
                                        uint16_t *serial_number,
                                        uint16_t serial_number_size);
-static int16_t scd4x_get_sensor_variant_raw(const struct device* dev,
-                                            uint16_t* sensor_variant);
-static int16_t scd4x_get_sensor_variant(const struct device* dev,
-                                        scd4x_sensor_variant* a_sensor_variant);
+static int16_t scd4x_get_sensor_variant_raw(const struct device *dev,
+                                            uint16_t *sensor_variant);
+static int16_t scd4x_get_sensor_variant(const struct device *dev,
+                                        scd4x_sensor_variant *a_sensor_variant);
+
+static int16_t scd41_start_periodic_measurement(const struct device *dev);
+static int16_t scd41_stop_periodic_measurement(const struct device *dev);
+static int16_t scd41_wake_up(const struct device *dev);
+
+static int16_t scd41_reinit(const struct device *dev);
+
 const struct scd41_bus_io scd41_bus_io_i2c = {
     .check = scd41_bus_check,
     .read = scd41_reg_read,
     .write = scd41_reg_write,
 };
 
-static const struct sensor_driver_api scd41_api_funcs = {
-    .sample_fetch = scd41_sample_fetch,
-    .channel_get = scd41_channel_get,
-};
+#define SCD41_CONFIG_I2C(inst)                                                 \
+  {                                                                            \
+      .i2c = I2C_DT_SPEC_INST_GET(inst),                                       \
+      .bus_io = &scd41_bus_io_i2c,                                             \
+  }
+
+/*
+ * Main instantiation macro.
+ */
+#define SCD41_DEFINE(inst)                                                     \
+  static struct scd41_data scd41_data_##inst;                                  \
+  static const struct scd41_config scd41_config_##inst =                       \
+      BME280_CONFIG_I2C(inst);                                                 \
+  SENSOR_DEVICE_DT_INST_DEFINE(                                                \
+      inst, scd41_chip_init, NULL, &scd41_data_##inst, &scd41_config_##inst,   \
+      POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY, &sensor_scd41_api);
+
+/* Create the struct device for every status "okay" node in the devicetree. */
+DT_INST_FOREACH_STATUS_OKAY(SCD41_DEFINE)
 
 static int scd41_chip_init(const struct device *dev) {
   struct scd41_data *data = dev->data;
@@ -90,56 +124,54 @@ static int scd41_chip_init(const struct device *dev) {
     return err;
   }
 
+  err = scd4x_get_sensor_variant(dev, &data->variant);
+
+  if (err < 0) {
+    LOG_DBG("Could not get SCD4x chip variant (%d)", err);
+    return err;
+  }
+
+  if (data->variant != SCD4X_SENSOR_VARIANT_SCD41) {
+    LOG_DBG("SCD4x variant not supported (0x%x)", data->variant);
+    return -ENOTSUP;
+  }
+  LOG_DBG("SCD4x variant(0x%x)", data->variant);
+
+  err = scd41_wake_up(dev);
+
+  if (err < 0) {
+    LOG_DBG("Could not wake up SCD4x chip (%d)", err);
+    return err;
+  }
+
+  err = scd41_stop_periodic_measurement(dev);
+
+  if (err < 0) {
+    LOG_DBG("Could not stop periodic measurement in SCD4x chip (%d)", err);
+    return err;
+  }
+
+  err = scd41_reinit(dev);
+
+  if (err < 0) {
+    LOG_DBG("Could not reinit SCD4x chip (%d)", err);
+    return err;
+  }
+
   err = scd41_get_serial_number(dev, &data->serial_number, 3);
   if (err < 0) {
     LOG_DBG("ID read failed: %d", err);
     return err;
   }
 
-  err = scd4x_get_sensor_variant(dev , &data->variant);
-
   LOG_DBG("SCD41(0x%x)", data->serial_number);
 
-  if (data->variant != SCD4X_SENSOR_VARIANT_SCD41) {
-      LOG_DBG("SCD4x variant not supported (0x%x)", data->variant);
-      return -ENOTSUP;
-  }
-  LOG_DBG("SCD4x variant(0x%x)", data->variant);
-
-  err = scd41_reg_write(dev, BME280_REG_RESET, BME280_CMD_SOFT_RESET);
+  err = scd41_start_periodic_measurement(dev);
   if (err < 0) {
-    LOG_DBG("Soft-reset failed: %d", err);
-  }
-
-  err = bme280_wait_until_ready(dev);
-  if (err < 0) {
+    LOG_DBG("Failed to start periodic measurement: %d", err);
     return err;
   }
 
-  err = bme280_read_compensation(dev);
-  if (err < 0) {
-    return err;
-  }
-
-  if (data->chip_id == BME280_CHIP_ID) {
-    err = bme280_reg_write(dev, BME280_REG_CTRL_HUM, BME280_HUMIDITY_OVER);
-    if (err < 0) {
-      LOG_DBG("CTRL_HUM write failed: %d", err);
-      return err;
-    }
-  }
-
-  err = bme280_reg_write(dev, BME280_REG_CTRL_MEAS, BME280_CTRL_MEAS_VAL);
-  if (err < 0) {
-    LOG_DBG("CTRL_MEAS write failed: %d", err);
-    return err;
-  }
-
-  err = bme280_reg_write(dev, BME280_REG_CONFIG, BME280_CONFIG_VAL);
-  if (err < 0) {
-    LOG_DBG("CONFIG write failed: %d", err);
-    return err;
-  }
   /* Wait for the sensor to be ready */
   k_sleep(K_MSEC(1));
 
@@ -219,19 +251,19 @@ static int16_t scd41_i2c_read_data_inplace(const struct device *dev,
     return BYTE_NUM_ERROR;
   }
 
-  error = i2c_read(cfg->i2c->bus, buffer_ptr, size, cfg->i2c->addr);
+  error = i2c_read(cfg->spec.bus, buffer_ptr, size, cfg->spec.addr);
   if (error) {
     return error;
   }
   for (i = 0, j = 0; i < size; i += SENSIRION_WORD_SIZE + CRC8_LEN) {
 
-    error = scd41_i2c_check_crc(&buffer[i], SENSIRION_WORD_SIZE,
-                                buffer[i + SENSIRION_WORD_SIZE]);
+    error = scd41_i2c_check_crc(&buffer_ptr[i], SENSIRION_WORD_SIZE,
+                                buffer_ptr[i + SENSIRION_WORD_SIZE]);
     if (error) {
       return error;
     }
-    buffer[j++] = buffer[i];
-    buffer[j++] = buffer[i + 1];
+    buffer_ptr[j++] = buffer_ptr[i];
+    buffer_ptr[j++] = buffer_ptr[i + 1];
   }
   return NO_ERROR;
 }
@@ -244,11 +276,12 @@ static int16_t scd41_get_data_ready_status_raw(const struct device *dev,
   const struct scd41_config *cfg = dev->config;
   local_offset = scd41_add_command16_to_buffer(
       buffer_ptr, local_offset, SCD4X_GET_DATA_READY_STATUS_RAW_CMD_ID);
-  local_error = i2c_write(cfg->i2c->bus, buffer_ptr, local_offset, cfg->i2c->addr);
+  local_error =
+      i2c_write(cfg->spec.bus, buffer_ptr, local_offset, cfg->spec.addr);
   if (local_error != NO_ERROR) {
     return local_error;
   }
-  k_usleep(K_MSEC(1));
+  k_msleep(1);
   local_error = scd41_i2c_read_data_inplace(dev, buffer_ptr, 2);
   if (local_error != NO_ERROR) {
     return local_error;
@@ -270,21 +303,81 @@ static int16_t scd41_get_data_ready_status(const struct device *dev,
   return local_error;
 }
 
+static int16_t scd41_start_periodic_measurement(const struct device *dev) {
+  int16_t local_error = NO_ERROR;
+  uint8_t buffer_ptr[9];
+  uint16_t local_offset = 0;
+  const struct scd41_config *cfg = dev->config;
+  local_offset = scd41_add_command16_to_buffer(
+      buffer_ptr, local_offset, SCD4X_START_PERIODIC_MEASUREMENT_CMD_ID);
+  local_error =
+      i2c_write(cfg->spec.bus, buffer_ptr, local_offset, cfg->spec.addr);
+  return local_error;
+}
+
+static int16_t scd41_stop_periodic_measurement(const struct device *dev) {
+  int16_t local_error = NO_ERROR;
+  uint8_t buffer_ptr[9];
+  uint16_t local_offset = 0;
+  const struct scd41_config *cfg = dev->config;
+  local_offset = scd41_add_command16_to_buffer(
+      buffer_ptr, local_offset, SCD4X_STOP_PERIODIC_MEASUREMENT_CMD_ID);
+  local_error =
+      i2c_write(cfg->spec.bus, buffer_ptr, local_offset, cfg->spec.addr);
+  if (local_error != NO_ERROR) {
+    return local_error;
+  }
+  k_msleep(500);
+  return local_error;
+}
+
+static int16_t scd41_wake_up(const struct device *dev) {
+  int16_t local_error = NO_ERROR;
+  uint8_t buffer_ptr[9];
+  uint16_t local_offset = 0;
+  const struct scd41_config *cfg = dev->config;
+  local_offset = scd41_add_command16_to_buffer(buffer_ptr, local_offset,
+                                               SCD4X_WAKE_UP_CMD_ID);
+  local_error =
+      i2c_write(cfg->spec.bus, buffer_ptr, local_offset, cfg->spec.addr);
+  if (local_error != NO_ERROR) {
+    return local_error;
+  }
+  k_msleep(30);
+  return local_error;
+}
+
+static int16_t scd41_reinit(const struct device *dev) {
+  int16_t local_error = NO_ERROR;
+  uint8_t buffer_ptr[9];
+  uint16_t local_offset = 0;
+  const struct scd41_config *cfg = dev->config;
+  local_offset = scd41_add_command16_to_buffer(buffer_ptr, local_offset,
+                                               SCD4X_REINIT_CMD_ID);
+  local_error =
+      i2c_write(cfg->spec.bus, buffer_ptr, local_offset, cfg->spec.addr);
+  if (local_error != NO_ERROR) {
+    return local_error;
+  }
+  k_msleep(30);
+  return local_error;
+}
+
 static inline int scd41_bus_check(const struct device *dev) {
   const struct scd41_config *cfg = dev->config;
-  return device_is_ready(cfg->i2c.bus) ? 0 : -ENODEV;
+  return device_is_ready(cfg->spec.bus) ? 0 : -ENODEV;
 }
 
 static inline int scd41_reg_read(const struct device *dev, uint8_t start,
                                  uint8_t *buf, int size) {
   const struct scd41_config *cfg = dev->config;
-  return i2c_burst_read_dt(cfg->i2c, start, buf, size);
+  return i2c_burst_read_dt(&cfg->spec, start, buf, size);
 }
 
 static inline int scd41_reg_write(const struct device *dev, uint8_t reg,
                                   uint8_t val) {
   const struct scd41_config *cfg = dev->config;
-  return i2c_reg_write_byte_dt(cfg->i2c, reg, val);
+  return i2c_reg_write_byte_dt(&cfg->spec, reg, val);
 }
 
 static int16_t scd41_get_serial_number(const struct device *dev,
@@ -297,11 +390,11 @@ static int16_t scd41_get_serial_number(const struct device *dev,
   local_offset = scd41_add_command16_to_buffer(buffer_ptr, local_offset,
                                                SCD4X_GET_SERIAL_NUMBER_CMD_ID);
   local_error =
-      i2c_write(cfg->i2c->bus, buffer_ptr, local_offset, cfg->i2c->addr);
+      i2c_write(cfg->spec.bus, buffer_ptr, local_offset, cfg->spec.addr);
   if (local_error != NO_ERROR) {
     return local_error;
   }
-  k_usleep(K_MSEC(1));
+  k_msleep(1);
   local_error = scd41_i2c_read_data_inplace(dev, buffer_ptr, 6);
   if (local_error != NO_ERROR) {
     return local_error;
@@ -311,48 +404,51 @@ static int16_t scd41_get_serial_number(const struct device *dev,
   return local_error;
 }
 
-static int16_t scd4x_get_sensor_variant(const struct device* dev, scd4x_sensor_variant* a_sensor_variant) {
-    scd4x_sensor_variant ret_val = SCD4X_SENSOR_VARIANT_MASK;
-    uint16_t raw_sensor_variant = 0;
-    uint16_t my_sensor_variant = 0;
-    int16_t local_error = 0;
-    ret_val = SCD4X_SENSOR_VARIANT_MASK;
-    uint16_t mask = (uint16_t)(ret_val);
-    local_error = scd4x_get_sensor_variant_raw(&raw_sensor_variant);
-    if (local_error != NO_ERROR) {
-        return local_error;
-    }
-    my_sensor_variant = (uint16_t)(raw_sensor_variant & mask);
-    if (my_sensor_variant == (uint16_t)(SCD4X_SENSOR_VARIANT_SCD40)) {
-        ret_val = SCD4X_SENSOR_VARIANT_SCD40;
-    } else if (my_sensor_variant == (uint16_t)(SCD4X_SENSOR_VARIANT_SCD41)) {
-        ret_val = SCD4X_SENSOR_VARIANT_SCD41;
-    } else if (my_sensor_variant == (uint16_t)(SCD4X_SENSOR_VARIANT_SCD42)) {
-        ret_val = SCD4X_SENSOR_VARIANT_SCD42;
-    } else if (my_sensor_variant == (uint16_t)(SCD4X_SENSOR_VARIANT_SCD43)) {
-        ret_val = SCD4X_SENSOR_VARIANT_SCD43;
-    }
-    *a_sensor_variant = ret_val;
+static int16_t
+scd4x_get_sensor_variant(const struct device *dev,
+                         scd4x_sensor_variant *a_sensor_variant) {
+  scd4x_sensor_variant ret_val = SCD4X_SENSOR_VARIANT_MASK;
+  uint16_t raw_sensor_variant = 0;
+  uint16_t my_sensor_variant = 0;
+  int16_t local_error = 0;
+  ret_val = SCD4X_SENSOR_VARIANT_MASK;
+  uint16_t mask = (uint16_t)(ret_val);
+  local_error = scd4x_get_sensor_variant_raw(dev, &raw_sensor_variant);
+  if (local_error != NO_ERROR) {
     return local_error;
+  }
+  my_sensor_variant = (uint16_t)(raw_sensor_variant & mask);
+  if (my_sensor_variant == (uint16_t)(SCD4X_SENSOR_VARIANT_SCD40)) {
+    ret_val = SCD4X_SENSOR_VARIANT_SCD40;
+  } else if (my_sensor_variant == (uint16_t)(SCD4X_SENSOR_VARIANT_SCD41)) {
+    ret_val = SCD4X_SENSOR_VARIANT_SCD41;
+  } else if (my_sensor_variant == (uint16_t)(SCD4X_SENSOR_VARIANT_SCD42)) {
+    ret_val = SCD4X_SENSOR_VARIANT_SCD42;
+  } else if (my_sensor_variant == (uint16_t)(SCD4X_SENSOR_VARIANT_SCD43)) {
+    ret_val = SCD4X_SENSOR_VARIANT_SCD43;
+  }
+  *a_sensor_variant = ret_val;
+  return local_error;
 }
 
-static int16_t scd4x_get_sensor_variant_raw(const struct device* dev, uint16_t* sensor_variant) {
-    int16_t local_error = NO_ERROR;
-    uint8_t buffer_ptr[9] = {0};
-    uint16_t local_offset = 0;
-    const struct scd41_config *cfg = dev->config;
-    local_offset =
-        scd41_add_command16_to_buffer(buffer_ptr, local_offset, SCD4X_GET_SENSOR_VARIANT_RAW_CMD_ID);
-    local_error = i2c_write(cfg->i2c->bus, buffer_ptr, local_offset, cfg->i2c->addr);
-    if (local_error != NO_ERROR) {
-        return local_error;
-    }
-    k_usleep(K_MSEC(1));
-    local_error = scd41_i2c_read_data_inplace(dev, buffer_ptr, 2);
-    if (local_error != NO_ERROR) {
-        return local_error;
-    }
-    *sensor_variant = scd41_bytes_to_uint16_t(&buffer_ptr[0]);
+static int16_t scd4x_get_sensor_variant_raw(const struct device *dev,
+                                            uint16_t *sensor_variant) {
+  int16_t local_error = NO_ERROR;
+  uint8_t buffer_ptr[9] = {0};
+  uint16_t local_offset = 0;
+  const struct scd41_config *cfg = dev->config;
+  local_offset = scd41_add_command16_to_buffer(
+      buffer_ptr, local_offset, SCD4X_GET_SENSOR_VARIANT_RAW_CMD_ID);
+  local_error =
+      i2c_write(cfg->spec.bus, buffer_ptr, local_offset, cfg->spec.addr);
+  if (local_error != NO_ERROR) {
     return local_error;
+  }
+  k_msleep(1);
+  local_error = scd41_i2c_read_data_inplace(dev, buffer_ptr, 2);
+  if (local_error != NO_ERROR) {
+    return local_error;
+  }
+  *sensor_variant = scd41_bytes_to_uint16_t(&buffer_ptr[0]);
+  return local_error;
 }
-

@@ -7,7 +7,7 @@ user manual: https://www.st.com/resource/en/user_manual/um1658-discovery-kit-for
 ```bash
 > git clone --depth 1 --branch v0.12.0 --single-branch https://github.com/openocd-org/openocd.git
 > cd ./openocd
-> sudo apt install libtool libusb-1.0-0-dev
+> sudo apt install libtool libusb-1.0-0-dev pkg-config
 > ./bootstrap
 > ./configure --enable-stlink --prefix ${HOME}/.local/
 > make -j 4

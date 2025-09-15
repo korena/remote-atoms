@@ -4,21 +4,14 @@
 #include <zephyr/types.h>
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
-#include <zephyr/drivers/i2c.h>
-
-
-#define DT_DRV_COMPAT sensiron_scd41
 
 #define SCD41_BUS_I2C DT_ANY_INST_ON_BUS_STATUS_OKAY(i2c)
 #define SCD41_I2C_ADDR_62 (0x62)
 
-
-struct i2c_dt_spec i2c;
-
-typedef int (*scd41_bus_check_fn)(struct i2c *bus);
-typedef int (*scd41_reg_read_fn)(struct i2c *bus,
+typedef int (*scd41_bus_check_fn)(const struct device *dev);
+typedef int (*scd41_reg_read_fn)(const struct device *dev,
 				  uint8_t start, uint8_t *buf, int size);
-typedef int (*scd41_reg_write_fn)(struct i2c *bus,
+typedef int (*scd41_reg_write_fn)(const struct device *dev,
 				   uint8_t reg, uint8_t val);
 
 

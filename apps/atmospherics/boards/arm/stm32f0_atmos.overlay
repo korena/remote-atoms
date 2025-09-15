@@ -27,6 +27,13 @@
         reg = <0x59>;
         enable-selftest;
     };
+
+    scd41: scd41@62 {
+      compatible = "sensirion,scd41";
+      status = "okay";
+      reg = <0x62>;
+    };
+
     bme280: bme280@76 {
         compatible = "bosch,bme280";
         label = "BME280";
