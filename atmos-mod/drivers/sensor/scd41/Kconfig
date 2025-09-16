@@ -1,7 +1,8 @@
-menuconfig SCD41
+config SCD41
 	bool "Sensirion SCD41 sensor"
 	default y
 	depends on DT_HAS_SENSIRION_SCD41_ENABLED
 	select I2C
+	select CRC
 	help
 	  Sensirion SCD41 CO2, Temperature, and Humidity sensor

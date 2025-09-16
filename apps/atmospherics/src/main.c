@@ -11,7 +11,6 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/sensor.h>
-#include <zephyr/drivers/sensor/sgp40.h>
 #include <zephyr/kernel.h>
 
 #include "bme_sensor.h"
@@ -27,9 +26,9 @@
 #define I2C2_NODE DT_NODELABEL(i2c2)
 #define I2C1_NODE DT_NODELABEL(i2c1)
 
-#if !DT_HAS_COMPAT_STATUS_OKAY(sensirion_sgp40)
-#error "No sensirion,sgp40 compatible node found in the device tree"
-#endif
+//#if !DT_HAS_COMPAT_STATUS_OKAY(sensirion_sgp40)
+//#error "No sensirion,sgp40 compatible node found in the device tree"
+//#endif
 /*
  * A build error on this line means your board is unsupported.
  * See the sample documentation for information on how to fix this.
@@ -39,11 +38,18 @@ static const struct gpio_dt_spec led1 = GPIO_DT_SPEC_GET(LED1_NODE, gpios);
 
 int main(void) {
   int ret;
+  struct bme280_data bme280_data;
+  struct scd41_data scd41_data;
 
   if (!gpio_is_ready_dt(&led) || !gpio_is_ready_dt(&led1)) {
     return 0;
   }
   ret = init_bme280_device();
+  if (ret < 0) {
+    return 0;
+  }
+
+  ret = init_scd41_device();
   if (ret < 0) {
     return 0;
   }
@@ -69,7 +75,6 @@ int main(void) {
       return 0;
     }
     // BME280
-    struct bme280_data bme280_data;
     ret = get_bme280_data(&bme280_data);
     if (ret < 0) {
       return 0;
@@ -79,6 +84,9 @@ int main(void) {
            bme280_data.press.val2, bme280_data.humidity.val1,
            bme280_data.humidity.val2);
 
+    // SCD41
+    ret = get_scd41_data(&scd41_data);
+    
     //    // SGP40
     //	  struct sensor_value gas;
     //	  struct sensor_value comp_t;

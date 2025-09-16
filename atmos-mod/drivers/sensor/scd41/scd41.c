@@ -8,6 +8,7 @@
 #include <zephyr/types.h>
 
 #include "scd41.h"
+#include "zephyr/sys/printk.h"
 #include <zephyr/logging/log.h>
 
 // sensirion ported defines
@@ -23,7 +24,7 @@
 
 LOG_MODULE_REGISTER(SCD41, CONFIG_SENSOR_LOG_LEVEL);
 
-#define DT_DRV_COMPAT sensiron_scd41
+#define DT_DRV_COMPAT sensirion_scd41
 
 #if DT_NUM_INST_STATUS_OKAY(DT_DRV_COMPAT) == 0
 #warning "SCD41 driver enabled without any devices"
@@ -33,7 +34,7 @@ struct scd41_data {
   uint16_t serial_number;
   scd4x_sensor_variant variant;
   uint16_t co2_concentration;
-  uint16_t temperature;
+  uint32_t temperature;
   uint16_t relative_humidity;
 };
 
@@ -60,8 +61,10 @@ static inline int scd41_reg_write(const struct device *dev, uint8_t reg,
                                   uint8_t val);
 // Private functions
 // --------------------------------------------------------------------------------------------
-static int scd41_chip_init(const struct device *dev);
+int scd41_chip_init(const struct device *dev);
 
+static int16_t scd41_get_data_ready_status(const struct device *dev,
+                                           bool *arg_0);
 static uint16_t scd41_add_command16_to_buffer(uint8_t *buffer, uint16_t offset,
                                               uint16_t command);
 static int16_t scd41_i2c_read_data_inplace(const struct device *dev,
@@ -83,12 +86,16 @@ static int16_t scd4x_get_sensor_variant(const struct device *dev,
 
 static int16_t scd41_start_periodic_measurement(const struct device *dev);
 static int16_t scd41_stop_periodic_measurement(const struct device *dev);
-static int16_t scd41_read_measurement_raw(const struct device *dev, uint16_t* co2_concentration, uint16_t* temperature, uint16_t* relative_humidity);
-static int16_t scd4x_read_measurement(const struct device *dev, uint16_t* co2, int32_t* temperature_m_deg_c, int32_t* humidity_m_percent_rh);
+static int16_t scd41_read_measurement_raw(const struct device *dev,
+                                          uint16_t *co2_concentration,
+                                          uint16_t *temperature,
+                                          uint16_t *relative_humidity);
+static int16_t scd41_read_measurement(const struct device *dev, uint16_t *co2,
+                                      int32_t *temperature_m_deg_c,
+                                      int32_t *humidity_m_percent_rh);
 static int16_t scd41_wake_up(const struct device *dev);
 
 static int16_t scd41_reinit(const struct device *dev);
-
 
 /**
  * Sleep for a given number of microseconds. The function should delay the
@@ -99,10 +106,10 @@ static int16_t scd41_reinit(const struct device *dev);
  * @param useconds the sleep time in microseconds
  */
 void scd41_sleep_usec(uint32_t useconds) {
-    int32_t remaining = useconds;
-    while (remaining > 0) {
-        remaining = k_usleep(remaining);
-    }
+  int32_t remaining = useconds;
+  while (remaining > 0) {
+    remaining = k_usleep(remaining);
+  }
 }
 
 const struct scd41_bus_io scd41_bus_io_i2c = {
@@ -111,27 +118,7 @@ const struct scd41_bus_io scd41_bus_io_i2c = {
     .write = scd41_reg_write,
 };
 
-#define SCD41_CONFIG_I2C(inst)                                                 \
-  {                                                                            \
-      .i2c = I2C_DT_SPEC_INST_GET(inst),                                       \
-      .bus_io = &scd41_bus_io_i2c,                                             \
-  }
-
-/*
- * Main instantiation macro.
- */
-#define SCD41_DEFINE(inst)                                                     \
-  static struct scd41_data scd41_data_##inst;                                  \
-  static const struct scd41_config scd41_config_##inst =                       \
-      BME280_CONFIG_I2C(inst);                                                 \
-  SENSOR_DEVICE_DT_INST_DEFINE(                                                \
-      inst, scd41_chip_init, NULL, &scd41_data_##inst, &scd41_config_##inst,   \
-      POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY, &sensor_scd41_api);
-
-/* Create the struct device for every status "okay" node in the devicetree. */
-DT_INST_FOREACH_STATUS_OKAY(SCD41_DEFINE)
-
-static int scd41_chip_init(const struct device *dev) {
+int scd41_chip_init(const struct device *dev) {
   struct scd41_data *data = dev->data;
   int err;
 
@@ -183,11 +170,11 @@ static int scd41_chip_init(const struct device *dev) {
 
   LOG_DBG("SCD41(0x%x)", data->serial_number);
 
-  err = scd41_start_periodic_measurement(dev);
-  if (err < 0) {
-    LOG_DBG("Failed to start periodic measurement: %d", err);
-    return err;
-  }
+  //  err = scd41_start_periodic_measurement(dev);
+  //  if (err < 0) {
+  //    LOG_DBG("Failed to start periodic measurement: %d", err);
+  //    return err;
+  //  }
 
   LOG_DBG("\"%s\" OK", dev->name);
   return 0;
@@ -196,17 +183,63 @@ static int scd41_chip_init(const struct device *dev) {
 static int scd41_sample_fetch(const struct device *dev,
                               enum sensor_channel chan) {
   struct scd41_data *data = dev->data;
-  uint8_t buf[16];
+  int16_t error = NO_ERROR;
   bool data_ready = false;
   uint16_t co2_concentration = 0;
   int32_t temperature = 0;
   int32_t relative_humidity = 0;
   uint16_t repetition = 0;
-  int size = 6;
   int ret;
 
   __ASSERT_NO_MSG(chan == SENSOR_CHAN_ALL);
+
+  ret = scd41_read_measurement(dev, &co2_concentration, &temperature,
+                               &relative_humidity);
+  if (ret < 0) {
+    printk("Failed to read measurement (%d)", ret);
+    return ret;
+  }
+
+  for (repetition = 0; repetition < 50; repetition++) {
+    //
+    // Slow down the sampling to 0.2Hz.
+    //
+    scd41_sleep_usec(5000000);
+    //
+    // If ambient pressure compensation during measurement
+    // is required, you should call the respective functions here.
+    // Check out the header file for the function definition.
+    error = scd41_get_data_ready_status(dev, &data_ready);
+    if (error != NO_ERROR) {
+      printk("error executing get_data_ready_status(): %i\n", error);
+      continue;
+    }
+    while (!data_ready) {
+      scd41_sleep_usec(100000);
+      error = scd41_get_data_ready_status(dev, &data_ready);
+      if (error != NO_ERROR) {
+        printf("error executing get_data_ready_status(): %i\n", error);
+        continue;
+      }
+    }
+    error = scd41_read_measurement(dev, &co2_concentration, &temperature,
+                                   &relative_humidity);
+    if (error != NO_ERROR) {
+      printf("error executing read_measurement(): %i\n", error);
+      continue;
+    }
+    // Print results in physical units.
+    printf("CO2 concentration [ppm]: %u\n", co2_concentration);
+    printf("Temperature [m°C] : %i\n", temperature);
+    printf("Humidity [mRH]: %i\n", relative_humidity);
+  }
+
+  data->temperature = temperature;
+  data->relative_humidity = relative_humidity;
+  data->co2_concentration = co2_concentration;
+  return NO_ERROR;
 }
+
 static int scd41_channel_get(const struct device *dev, enum sensor_channel chan,
                              struct sensor_value *val) {
   return 0;
@@ -312,7 +345,6 @@ static int16_t scd41_get_data_ready_status(const struct device *dev,
                                            bool *arg_0) {
   uint16_t data_ready_status = 0;
   int16_t local_error = 0;
-  const struct scd41_config *cfg = dev->config;
   local_error = scd41_get_data_ready_status_raw(dev, &data_ready_status);
   if (local_error != NO_ERROR) {
     return local_error;
@@ -349,30 +381,31 @@ static int16_t scd41_stop_periodic_measurement(const struct device *dev) {
   return local_error;
 }
 
-uint16_t sensirion_common_bytes_to_uint16_t(const uint8_t* bytes) {
-    return (uint16_t)bytes[0] << 8 | (uint16_t)bytes[1];
+uint16_t sensirion_common_bytes_to_uint16_t(const uint8_t *bytes) {
+  return (uint16_t)bytes[0] << 8 | (uint16_t)bytes[1];
 }
 
-uint32_t sensirion_common_bytes_to_uint32_t(const uint8_t* bytes) {
-    return (uint32_t)bytes[0] << 24 | (uint32_t)bytes[1] << 16 |
-           (uint32_t)bytes[2] << 8 | (uint32_t)bytes[3];
+uint32_t sensirion_common_bytes_to_uint32_t(const uint8_t *bytes) {
+  return (uint32_t)bytes[0] << 24 | (uint32_t)bytes[1] << 16 |
+         (uint32_t)bytes[2] << 8 | (uint32_t)bytes[3];
 }
 
-int16_t sensirion_common_bytes_to_int16_t(const uint8_t* bytes) {
-    return (int16_t)sensirion_common_bytes_to_uint16_t(bytes);
+int16_t sensirion_common_bytes_to_int16_t(const uint8_t *bytes) {
+  return (int16_t)sensirion_common_bytes_to_uint16_t(bytes);
 }
 
-int32_t sensirion_common_bytes_to_int32_t(const uint8_t* bytes) {
-    return (int32_t)sensirion_common_bytes_to_uint32_t(bytes);
+int32_t sensirion_common_bytes_to_int32_t(const uint8_t *bytes) {
+  return (int32_t)sensirion_common_bytes_to_uint32_t(bytes);
 }
 
-static int16_t scd41_read_measurement_raw(const struct device *dev, uint16_t* co2_concentration,
-                                   uint16_t* temperature,
-                                   uint16_t* relative_humidity) {
-    int16_t local_error = NO_ERROR;
-    uint8_t buffer_ptr[9];
-    uint16_t local_offset = 0;
-    const struct scd41_config *cfg = dev->config;
+static int16_t scd41_read_measurement_raw(const struct device *dev,
+                                          uint16_t *co2_concentration,
+                                          uint16_t *temperature,
+                                          uint16_t *relative_humidity) {
+  int16_t local_error = NO_ERROR;
+  uint8_t buffer_ptr[9];
+  uint16_t local_offset = 0;
+  const struct scd41_config *cfg = dev->config;
   local_offset = scd41_add_command16_to_buffer(
       buffer_ptr, local_offset, SCD4X_READ_MEASUREMENT_RAW_CMD_ID);
   local_error =
@@ -380,29 +413,30 @@ static int16_t scd41_read_measurement_raw(const struct device *dev, uint16_t* co
   if (local_error != NO_ERROR) {
     return local_error;
   }
-    scd41_sleep_usec(1 * 1000);
-    local_error = scd41_i2c_read_data_inplace(dev, buffer_ptr, 6);
-    if (local_error != NO_ERROR) {
-        return local_error;
-    }
-    *co2_concentration = sensirion_common_bytes_to_uint16_t(&buffer_ptr[0]);
-    *temperature = sensirion_common_bytes_to_uint16_t(&buffer_ptr[2]);
-    *relative_humidity = sensirion_common_bytes_to_uint16_t(&buffer_ptr[4]);
+  scd41_sleep_usec(1 * 1000);
+  local_error = scd41_i2c_read_data_inplace(dev, buffer_ptr, 6);
+  if (local_error != NO_ERROR) {
     return local_error;
+  }
+  *co2_concentration = sensirion_common_bytes_to_uint16_t(&buffer_ptr[0]);
+  *temperature = sensirion_common_bytes_to_uint16_t(&buffer_ptr[2]);
+  *relative_humidity = sensirion_common_bytes_to_uint16_t(&buffer_ptr[4]);
+  return local_error;
 }
 
-static int16_t scd41_read_measurement(const struct device *dev, uint16_t* co2, int32_t* temperature_m_deg_c,
-                               int32_t* humidity_m_percent_rh) {
-    int16_t error;
-    uint16_t temperature;
-    uint16_t humidity;
-    error = scd41_read_measurement_raw(dev, co2, &temperature, &humidity);
-    if (error) {
-        return error;
-    }
-    *temperature_m_deg_c = ((21875 * (int32_t)temperature) >> 13) - 45000;
-    *humidity_m_percent_rh = ((12500 * (int32_t)humidity) >> 13);
-    return NO_ERROR;
+static int16_t scd41_read_measurement(const struct device *dev, uint16_t *co2,
+                                      int32_t *temperature_m_deg_c,
+                                      int32_t *humidity_m_percent_rh) {
+  int16_t error;
+  uint16_t temperature;
+  uint16_t humidity;
+  error = scd41_read_measurement_raw(dev, co2, &temperature, &humidity);
+  if (error) {
+    return error;
+  }
+  *temperature_m_deg_c = ((21875 * (int32_t)temperature) >> 13) - 45000;
+  *humidity_m_percent_rh = ((12500 * (int32_t)humidity) >> 13);
+  return NO_ERROR;
 }
 
 static int16_t scd41_wake_up(const struct device *dev) {
@@ -526,3 +560,20 @@ static int16_t scd4x_get_sensor_variant_raw(const struct device *dev,
   *sensor_variant = scd41_bytes_to_uint16_t(&buffer_ptr[0]);
   return local_error;
 }
+
+#define SCD41_CONFIG_I2C(inst)                                                 \
+  { .spec = I2C_DT_SPEC_INST_GET(inst), .bus_io = &scd41_bus_io_i2c, }
+
+/*
+ * Main instantiation macro.
+ */
+#define SCD41_DEFINE(inst)                                                     \
+  static struct scd41_data scd41_data_##inst;                                  \
+  static const struct scd41_config scd41_config_##inst =                       \
+      SCD41_CONFIG_I2C(inst);                                                  \
+  SENSOR_DEVICE_DT_INST_DEFINE(                                                \
+      inst, scd41_chip_init, NULL, &scd41_data_##inst, &scd41_config_##inst,   \
+      POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY, &sensor_scd41_api);
+
+/* Create the struct device for every status "okay" node in the devicetree. */
+DT_INST_FOREACH_STATUS_OKAY(SCD41_DEFINE)

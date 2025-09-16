@@ -11,5 +11,5 @@ eval "$(pyenv virtualenv-init -)"
 fi
 [ -z ${ZEPHYR_BASE} ] && source ${HOME}/.local/opt/toolchains/zephyr/zephyr-env.sh
 pushd ${SCRIPT_DIR}/../apps/atmospherics
-west build -p always -b stm32f0_atmos --build-dir build -t menuconfig -- -DBOARD=stm32f0_atmos -DBOARD_ROOT=${HOME}/Development/remote-atmos -DDTC_OVERLAY_FILE=boards/arm/stm32f0_atmos.overlay
+west build -p always -b stm32f0_atmos --build-dir build -t menuconfig -- -DBOARD=stm32f0_atmos -DBOARD_ROOT=${HOME}/Development/remote-atmos -DDTC_OVERLAY_FILE=boards/arm/stm32f0_atmos.overlay -DEXTRA_ZEPHYR_MODULES=${HOME}/Development/remote-atmos/atmos-mod
 popd

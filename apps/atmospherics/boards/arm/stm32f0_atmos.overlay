@@ -20,13 +20,14 @@
     status = "okay";
     pinctrl-0 = <&i2c2_scl_pb10 &i2c2_sda_pb11>;
     pinctrl-names = "default";
-    sgp40: sgp40@59 {
-        compatible = "sensirion,sgp40";
-        label = "SGP40";
-        status = "okay";
-        reg = <0x59>;
-        enable-selftest;
-    };
+
+//    sgp40: sgp40@59 {
+//        compatible = "sensirion,sgp40";
+//        label = "SGP40";
+//        status = "disabled";
+//        reg = <0x59>;
+//        enable-selftest;
+//    };
 
     scd41: scd41@62 {
       compatible = "sensirion,scd41";
