@@ -18,17 +18,18 @@
 #include "sgp_sensor.h"
 
 /* 1000 msec = 1 sec */
-#define SLEEP_TIME_MS 1000
-
+#define SLEEP_TIME_MS 10000
+/*every hour*/
+#define SCD41_PRESS_UPDATE_PERIOD_SEC (60 * 60 * 1000)
 /* The devicetree node identifier for the "led0" alias. */
 #define LED0_NODE DT_ALIAS(led0)
 #define LED1_NODE DT_ALIAS(led1)
 #define I2C2_NODE DT_NODELABEL(i2c2)
 #define I2C1_NODE DT_NODELABEL(i2c1)
 
-//#if !DT_HAS_COMPAT_STATUS_OKAY(sensirion_sgp40)
-//#error "No sensirion,sgp40 compatible node found in the device tree"
-//#endif
+// #if !DT_HAS_COMPAT_STATUS_OKAY(sensirion_sgp40)
+// #error "No sensirion,sgp40 compatible node found in the device tree"
+// #endif
 /*
  * A build error on this line means your board is unsupported.
  * See the sample documentation for information on how to fix this.
@@ -79,14 +80,20 @@ int main(void) {
     if (ret < 0) {
       return 0;
     }
-    printk("temp: %d.%06d; press: %d.%06d; humidity: %d.%06d\n",
+    printk("<BME280>\nTemperature [°C]: %d.%06d\nPressure [hPa]: %d.%06d \nHumidity [%%RH] : %d.%06d\n",
            bme280_data.temp.val1, bme280_data.temp.val2, bme280_data.press.val1,
            bme280_data.press.val2, bme280_data.humidity.val1,
            bme280_data.humidity.val2);
 
     // SCD41
     ret = get_scd41_data(&scd41_data);
-    
+    printk("<SCD41>\nCO2 concentration [ppm]: %d.%06d\nTemperature [°C] : "
+           "%d.%06d\nHumidity [%%RH]: %d.%06d\n",
+           scd41_data.co2_concentration.val1, scd41_data.co2_concentration.val2,
+           scd41_data.temperature.val1, scd41_data.temperature.val2,
+           scd41_data.relative_humidity.val1,
+           scd41_data.relative_humidity.val2);
+
     //    // SGP40
     //	  struct sensor_value gas;
     //	  struct sensor_value comp_t;

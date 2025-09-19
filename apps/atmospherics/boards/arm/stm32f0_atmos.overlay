@@ -5,10 +5,11 @@
     };
     aliases {
         bme280 = &bme280;
+        scd41 = &scd41;
     };
 };
 
-&gpiof {status = "okay";};
+// &gpiof {status = "okay";};
 
 &i2c1 {
   status = "disabled";

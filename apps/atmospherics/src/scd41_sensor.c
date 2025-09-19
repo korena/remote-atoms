@@ -25,16 +25,30 @@ error_t init_scd41_device(void) {
   return 0;
 }
 
-error_t get_scd41_data(struct scd41_data *scd41_data) {
+error_t update_scd41_pressure(const struct sensor_value *pressure) {
+  if (scd41_dev == NULL) {
+    printk("\nError: no SCD41 device found.\n");
+    return ENODEV;
+  }
+  return sensor_attr_set(scd41_dev, SENSOR_CHAN_PRESS, SENSOR_ATTR_CALIBRATION,
+                         pressure);
+}
 
+error_t get_scd41_data(struct scd41_data *scd41_data) {
   if (scd41_dev == NULL) {
     printk("\nError: no SCD41 device found.\n");
     return ENODEV;
   }
 
-  if (sensor_sample_fetch(scd41_dev)) {
-    printf("Failed to fetch sample from SCD41 device.\n");
+  if (0 != sensor_sample_fetch(scd41_dev)) {
+    printk("Failed to fetch sample from SCD41 device.\n");
     return 0;
   }
+  sensor_channel_get(scd41_dev, SENSOR_CHAN_AMBIENT_TEMP,
+                     &scd41_data->temperature);
+  sensor_channel_get(scd41_dev, SENSOR_CHAN_HUMIDITY,
+                     &scd41_data->relative_humidity);
+  sensor_channel_get(scd41_dev, SENSOR_CHAN_CO2,
+                     &scd41_data->co2_concentration);
   return 0;
 }
