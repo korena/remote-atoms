@@ -1,4 +1,4 @@
-menu "Drivers"
+menu "Device Drivers"
 rsource "sensor/Kconfig"
 endmenu
 

@@ -16,6 +16,7 @@ properties:
     type: int
     required: true
     description: The height of the display area
+
   page-offset:
     type: int
     default: 0

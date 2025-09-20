@@ -2,6 +2,7 @@
     chosen {
         zephyr,console = &usart1;
         zephyr,shell-uart = &usart1;
+		    zephyr,display = &sh1107;
     };
     aliases {
         bme280 = &bme280;
@@ -51,7 +52,6 @@
 
     bme280: bme280@76 {
         compatible = "bosch,bme280";
-        label = "BME280";
         reg = <0x76>;
         status = "okay";
     };

@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include "display.h"
 #include "zephyr/sys/printk.h"
 #include <stdint.h>
 #include <zephyr/device.h>
@@ -45,6 +46,12 @@ int main(void) {
   if (!gpio_is_ready_dt(&led) || !gpio_is_ready_dt(&led1)) {
     return 0;
   }
+
+  ret = init_display_device();
+  if (ret < 0) {
+    return 0;
+  }
+
   ret = init_bme280_device();
   if (ret < 0) {
     return 0;
@@ -80,7 +87,8 @@ int main(void) {
     if (ret < 0) {
       return 0;
     }
-    printk("<BME280>\nTemperature [°C]: %d.%06d\nPressure [hPa]: %d.%06d \nHumidity [%%RH] : %d.%06d\n",
+    printk("<BME280>\nTemperature [°C]: %d.%06d\nPressure [hPa]: %d.%06d "
+           "\nHumidity [%%RH] : %d.%06d\n",
            bme280_data.temp.val1, bme280_data.temp.val2, bme280_data.press.val1,
            bme280_data.press.val2, bme280_data.humidity.val1,
            bme280_data.humidity.val2);

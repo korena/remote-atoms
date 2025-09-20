@@ -72,7 +72,7 @@ static inline int sh1107_reg_write(const struct device *dev, uint8_t reg,
                                    uint8_t val);
 // ========================================== Implementation
 
-const struct sh1107_bus_io sh1107_bus_io_i2c = {
+struct sh1107_bus_io sh1107_bus_io_i2c = {
     .check = sh1107_bus_check,
     .read = sh1107_reg_read,
     .write = sh1107_reg_write,
@@ -184,25 +184,26 @@ static inline bool sh1107_bus_ready(const struct device *dev) {
 #define SH1107_CONFIG_I2C(inst)                                                \
   {.spec = I2C_DT_SPEC_INST_GET(inst),                                         \
    .bus_io = &sh1107_bus_io_i2c,                                               \
-   .ready_time_ms = DT_INST_PROP(inst, ready_time_ms),                         \
-   .height = DT_PROP(inst, height),                                            \
-   .width = DT_PROP(inst, width),                                              \
-   .page_offset = DT_PROP(inst, page_offset),                                  \
-   .display_offset = DT_PROP(inst, display_offset),                            \
-   .multiplex_ratio = DT_PROP(inst, multiplex_ratio),                          \
-   .segment_remap = DT_PROP(inst, segment_remap),                              \
-   .com_invdir = DT_PROP(inst, com_invdir),                                    \
-   .com_sequential = DT_PROP(inst, com_sequential),                            \
-   .prechargep = DT_PROP(inst, prechargep),                                    \
-   .color_inversion = DT_PROP(inst, inversion_on),                             \
-   .ready_time_ms = DT_PROP(inst, ready_time_ms)};
+   .height = DT_INST_PROP(inst, height),                                       \
+   .width = DT_INST_PROP(inst, width),                                         \
+   .page_offset = DT_INST_PROP(inst, page_offset),                             \
+   .display_offset = DT_INST_PROP(inst, display_offset),                       \
+   .multiplex_ratio = DT_INST_PROP(inst, multiplex_ratio),                     \
+   .prechargep = DT_INST_PROP(inst, prechargep),                               \
+   .segment_remap = DT_INST_PROP(inst, segment_remap),                         \
+   .com_invdir = DT_INST_PROP(inst, com_invdir),                               \
+   .com_sequential = DT_INST_PROP(inst, com_sequential),                       \
+   .color_inversion = DT_INST_PROP(inst, inversion_on),                        \
+   .ready_time_ms = DT_INST_PROP(inst, ready_time_ms)}
 
-#define SH1107_DEFINE(inst)                                                    \
-  static struct sh1107_data data##inst;                                        \
-  static const struct sh1107_config config##inst = SH1107_CONFIG_I2C(inst);    \
-                                                                               \
-  DEVICE_DT_DEFINE(inst, sh1107_init, NULL, &data##inst, &config##inst,        \
-                   POST_KERNEL, CONFIG_DISPLAY_INIT_PRIORITY,                  \
-                   &sh1107_driver_api);
-
+// clang-format off
+#define SH1107_DEFINE(inst)                                                          \
+  static const struct sh1107_config sh1107_config##inst = SH1107_CONFIG_I2C(inst);   \
+  static struct sh1107_data sh1107_data##inst;                                       \
+  DEVICE_DT_INST_DEFINE(inst,&sh1107_init, NULL,                                     \
+                        &sh1107_data##inst,                                          \
+                        &sh1107_config##inst,                                        \
+                        POST_KERNEL, CONFIG_DISPLAY_INIT_PRIORITY,                   \
+                        &sh1107_driver_api);
+// clang-format on
 DT_INST_FOREACH_STATUS_OKAY(SH1107_DEFINE)

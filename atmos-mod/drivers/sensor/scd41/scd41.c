@@ -721,7 +721,8 @@ static int16_t scd41_perform_self_test(const struct device *dev,
 }
 
 #define SCD41_CONFIG_I2C(inst)                                                 \
-  { .spec = I2C_DT_SPEC_INST_GET(inst), .bus_io = &scd41_bus_io_i2c, }
+  { .spec = I2C_DT_SPEC_INST_GET(inst), .bus_io = &scd41_bus_io_i2c,           \
+  }
 
 /*
  * Main instantiation macro.

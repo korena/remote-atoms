@@ -35,7 +35,7 @@ Info : Listening on port 3333 for gdb connections
 ## 2. Zephyr rtos
 
 ```bash
-sudo apt install --no-install-recommends ninja-build gperf ccache dfu-util device-tree-compiler file libsdl2-dev libmagic1
+sudo apt install --no-install-recommends ninja-build gperf ccache dfu-util device-tree-compiler file libsdl2-dev libmagic1 liblzma-dev libssl-dev libbz2-dev libsqlite3-dev libreadline-dev tk-dev
 pyenv virtualenv 3.12.11 zephyr
 pyenv activate zephyr
 mkdir -p ${HOME}/.local/opt/toolchains/ && cd ${HOME}/.local/opt/toolchains
