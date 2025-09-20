@@ -1,0 +1,6 @@
+menuconfig SH1107
+  bool "SSH1107 display driver"
+  default y
+  select I2C
+  help
+    SSH1107 I2C display driver

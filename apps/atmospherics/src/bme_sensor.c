@@ -1,6 +1,7 @@
 #include "bme_sensor.h"
 #include <errno.h>
-#include <stdio.h>
+#include "zephyr/drivers/sensor.h"
+#include "zephyr/sys/printk.h"
 #include <zephyr/device.h>
 
 const struct device *bme280_dev = NULL;

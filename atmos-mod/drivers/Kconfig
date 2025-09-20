@@ -1,3 +1,7 @@
 menu "Drivers"
 rsource "sensor/Kconfig"
 endmenu
+
+menu "DISPLAY"
+rsource "display/Kconfig.sh1107"
+endmenu

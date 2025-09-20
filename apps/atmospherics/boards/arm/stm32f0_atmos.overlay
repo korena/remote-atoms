@@ -6,15 +6,28 @@
     aliases {
         bme280 = &bme280;
         scd41 = &scd41;
+        sh1107 = &sh1107;
     };
 };
 
 // &gpiof {status = "okay";};
 
 &i2c1 {
-  status = "disabled";
+  status = "okay";
   pinctrl-0 = <&i2c1_scl_pb6 &i2c1_sda_pb7>;
   pinctrl-names = "default";
+  sh1107: sh1107@3c {
+    compatible = "sinowealth,sh1107";
+    status = "okay";
+    reg = <0x3c>;
+    width = <0x80>;
+    height = <0x40>;
+    display-offset = <0x60>;
+    multiplex-ratio = <0x3F>;
+    prechargep = <0x22>;
+    segment-remap;
+    ready-time-ms = <0x0A>;
+  };
 };
 
 &i2c2 {
@@ -26,7 +39,7 @@
 //        compatible = "sensirion,sgp40";
 //        label = "SGP40";
 //        status = "disabled";
-//        reg = <0x59>;
+//  reg = <0x59>;
 //        enable-selftest;
 //    };
 
