@@ -29,6 +29,18 @@
 #define SH110X_WHITE 1   ///< Draw 'on' pixels
 #define SH110X_INVERSE 2 ///< Invert pixels
 
+/* All following bytes will contain commands */
+#define SH110X_CONTROL_ALL_BYTES_CMD		0x00
+/* All following bytes will contain data */
+#define SH110X_CONTROL_ALL_BYTES_DATA		0x40
+/* The next byte will contain a command */
+#define SH110X_CONTROL_BYTE_CMD		0x80
+/* The next byte will contain data */
+#define SH110X_CONTROL_BYTE_DATA		0xc0
+#define SH110X_READ_STATUS_MASK		0xc0
+#define SH110X_READ_STATUS_BUSY		0x80
+#define SH110X_READ_STATUS_ON			0x40
+
 // Uncomment to disable Adafruit splash logo
 // #define SH110X_NO_SPLASH
 
@@ -60,8 +72,11 @@
   0xDC ///< Specify Column address to determine the initial display line or
        ///< COM0.
 
-#define SH110X_SETLOWCOLUMN 0x00  ///< Not currently used
-#define SH110X_SETHIGHCOLUMN 0x10 ///< Not currently used
-#define SH110X_SETSTARTLINE 0x40  ///< See datasheet
+#define SH110X_SETLOWCOLUMN       0x00  ///< Not currently used
+#define SH110X_SETLOWCOLUMN_MASK	0x0f
+#define SH110X_SETHIGHCOLUMN      0x10 ///< Not currently used
+#define SH110X_SETSTARTLINE       0x40  ///< See datasheet
+
+#define SH110X_RESET_DELAY			1
 
 #endif // !ZEPHYR_DRIVERS_DISPLAY_SH1107_H_

@@ -25,25 +25,20 @@
 /* The devicetree node identifier for the "led0" alias. */
 #define LED0_NODE DT_ALIAS(led0)
 #define LED1_NODE DT_ALIAS(led1)
+#define SW0_NODE  DT_ALIAS(sw0)
 #define I2C2_NODE DT_NODELABEL(i2c2)
 #define I2C1_NODE DT_NODELABEL(i2c1)
 
-// #if !DT_HAS_COMPAT_STATUS_OKAY(sensirion_sgp40)
-// #error "No sensirion,sgp40 compatible node found in the device tree"
-// #endif
-/*
- * A build error on this line means your board is unsupported.
- * See the sample documentation for information on how to fix this.
- */
-static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
+static const struct gpio_dt_spec led  = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
 static const struct gpio_dt_spec led1 = GPIO_DT_SPEC_GET(LED1_NODE, gpios);
+static const struct gpio_dt_spec sw0  = GPIO_DT_SPEC_GET(SW0_NODE, gpios);
 
 int main(void) {
   int ret;
   struct bme280_data bme280_data;
   struct scd41_data scd41_data;
 
-  if (!gpio_is_ready_dt(&led) || !gpio_is_ready_dt(&led1)) {
+  if (!gpio_is_ready_dt(&sw0) || !gpio_is_ready_dt(&led) || !gpio_is_ready_dt(&led1)) {
     return 0;
   }
 

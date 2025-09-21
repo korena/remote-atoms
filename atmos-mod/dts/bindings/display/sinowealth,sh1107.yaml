@@ -16,7 +16,10 @@ properties:
     type: int
     required: true
     description: The height of the display area
-
+  segment-offset:
+    type: int
+    required: true
+    description: 8-bit column start address for Page Addressing Mode
   page-offset:
     type: int
     default: 0
@@ -43,6 +46,14 @@ properties:
   com-sequential:
     type: boolean
     description: Sequential COM pin configuration
+
+  reset-gpios:
+    type: phandle-array
+    description: RESET pin.
+
+      The RESET pin of SH1107 is active low.
+      If connected directly the MCU pin should be configured
+      as active low.
 
   prechargep:
     type: int

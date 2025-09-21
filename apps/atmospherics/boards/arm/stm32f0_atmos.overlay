@@ -23,7 +23,9 @@
     reg = <0x3c>;
     width = <0x80>;
     height = <0x40>;
+    segment-offset = <0x00>;
     display-offset = <0x60>;
+    reset-gpios = <&gpioa 15 GPIO_ACTIVE_LOW>;
     multiplex-ratio = <0x3F>;
     prechargep = <0x22>;
     segment-remap;
