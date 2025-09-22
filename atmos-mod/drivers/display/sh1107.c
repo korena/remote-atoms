@@ -73,10 +73,30 @@ static int sh1107_write_data(const struct device *dev, const uint16_t x,
                              const void *buf, const size_t buf_len);
 // ========================================== Display Driver API
 static int sh1107_display_suspend(const struct device *dev);
+static int sh1107_display_resume(const struct device *dev);
 static int sh1107_display_write(const struct device *dev, const uint16_t x,
                                 const uint16_t y,
                                 const struct display_buffer_descriptor *desc,
                                 const void *buf);
+static int sh1107_display_read(const struct device *dev, const uint16_t x,
+                               const uint16_t y,
+                               const struct display_buffer_descriptor *desc,
+                               void *buf);
+static void *sh1107_display_get_framebuffer(const struct device *dev);
+
+static int sh1107_display_set_brightness(const struct device *dev,
+                                         const uint8_t brightness);
+static int sh1107_display_set_contrast(const struct device *dev,
+                                       const uint8_t contrast);
+static void sh1107_display_get_capabilities(const struct device *dev,
+                                            struct display_capabilities *caps);
+
+static int sh1107_display_set_pixel_format(const struct device *dev,
+                                           const enum display_pixel_format pf);
+
+static int
+sh1107_display_set_orientation(const struct device *dev,
+                               const enum display_orientation orientation);
 // ========================================== Implementation
 struct sh1107_bus_io sh1107_bus_io_i2c = {
     .check = sh1107_bus_check,
@@ -86,15 +106,15 @@ struct sh1107_bus_io sh1107_bus_io_i2c = {
 
 static struct display_driver_api sh1107_driver_api = {
     .blanking_on = sh1107_display_suspend,
-//    .blanking_off = sh1107_resume,
+    .blanking_off = sh1107_display_resume,
     .write = sh1107_display_write,
-//    .read = sh1107_read,
-//    .get_framebuffer = sh1107_get_framebuffer,
-//    .set_brightness = sh1107_set_brightness,
-//    .set_contrast = sh1107_set_contrast,
-//    .get_capabilities = sh1107_get_capabilities,
-//    .set_pixel_format = sh1107_set_pixel_format,
-//    .set_orientation = sh1107_set_orientation,
+    .read = sh1107_display_read,
+    .get_framebuffer = sh1107_display_get_framebuffer,
+    .set_brightness = sh1107_display_set_brightness,
+    .set_contrast = sh1107_display_set_contrast,
+    .get_capabilities = sh1107_display_get_capabilities,
+    .set_pixel_format = sh1107_display_set_pixel_format,
+    .set_orientation = sh1107_display_set_orientation,
 };
 
 static inline int sh1107_bus_check(const struct device *dev) {
@@ -150,6 +170,21 @@ static int sh1107_write_data(const struct device *dev, const uint16_t x,
   return 0;
 }
 
+static int sh1107_display_suspend(const struct device *dev) {
+  uint8_t cmd_buf[] = {
+      SH110X_DISPLAYOFF,
+  };
+  return sh1107_write(dev, cmd_buf, sizeof(cmd_buf), true);
+}
+
+static int sh1107_display_resume(const struct device *dev) {
+  uint8_t cmd_buf[] = {
+      SH110X_DISPLAYON,
+  };
+
+  return sh1107_write(dev, cmd_buf, sizeof(cmd_buf), true);
+}
+
 static int sh1107_display_write(const struct device *dev, const uint16_t x,
                                 const uint16_t y,
                                 const struct display_buffer_descriptor *desc,
@@ -173,12 +208,59 @@ static int sh1107_display_write(const struct device *dev, const uint16_t x,
   return sh1107_write_data(dev, x, y, desc, buffer->data, buffer->len);
 }
 
-static int sh1107_display_suspend(const struct device *dev)
-{
-	uint8_t cmd_buf[] = {
-		SH110X_DISPLAYOFF,
-	};
-	return sh1107_write(dev, cmd_buf, sizeof(cmd_buf), true);
+static int sh1107_display_read(const struct device *dev, const uint16_t x,
+                               const uint16_t y,
+                               const struct display_buffer_descriptor *desc,
+                               void *buf) {
+  LOG_ERR("Unsupported");
+  return -ENOTSUP;
+}
+
+static void *sh1107_display_get_framebuffer(const struct device *dev) {
+  LOG_ERR("Unsupported");
+  return NULL;
+}
+static int sh1107_display_set_brightness(const struct device *dev,
+                                         const uint8_t brightness) {
+  LOG_WRN("Unsupported");
+  return -ENOTSUP;
+}
+
+static int sh1107_display_set_contrast(const struct device *dev,
+                                       const uint8_t contrast) {
+  uint8_t cmd_buf[] = {
+      SH110X_SETCONTRAST,
+      contrast,
+  };
+
+  return sh1107_write(dev, cmd_buf, sizeof(cmd_buf), true);
+}
+
+static void sh1107_display_get_capabilities(const struct device *dev,
+                                            struct display_capabilities *caps) {
+  const struct sh1107_config *config = dev->config;
+  memset(caps, 0, sizeof(struct display_capabilities));
+  caps->x_resolution = config->width;
+  caps->y_resolution = config->height;
+  caps->supported_pixel_formats = PIXEL_FORMAT_MONO10;
+  caps->current_pixel_format = PIXEL_FORMAT_MONO10;
+  caps->screen_info = SCREEN_INFO_MONO_VTILED;
+}
+
+static int sh1107_display_set_pixel_format(const struct device *dev,
+                                           const enum display_pixel_format pf) {
+  if (pf == PIXEL_FORMAT_MONO10) {
+    return 0;
+  }
+  LOG_ERR("Unsupported");
+  return -ENOTSUP;
+}
+
+static int
+sh1107_display_set_orientation(const struct device *dev,
+                               const enum display_orientation orientation) {
+  LOG_ERR("Unsupported");
+  return -ENOTSUP;
 }
 
 static int sh1107_init_device(const struct device *dev) {
