@@ -151,7 +151,7 @@ static int sh1107_write_data(const struct device *dev, const uint16_t x,
   uint8_t *buf_ptr = (uint8_t *)buf;
   for (uint8_t n = 0; n < desc->height / 8; n++) {
     cmd_buf[sizeof(cmd_buf) - 1] = SH110X_SETPAGEADDR | (n + (y / 8));
-    LOG_HEXDUMP_DBG(cmd_buf, sizeof(cmd_buf), "cmd_buf");
+    // LOG_HEXDUMP_DBG(cmd_buf, sizeof(cmd_buf), "cmd_buf");
     if (sh1107_write(dev, cmd_buf, sizeof(cmd_buf), true)) {
       return -1;
     }
@@ -197,8 +197,8 @@ static int sh1107_display_write(const struct device *dev, const uint16_t x,
            "Writing outside screen boundaries in horizontal direction");
   __ASSERT(y + desc->height <= config->height,
            "Writing outside screen boundaries in vertical direction");
-  LOG_DBG("x %u, y %u, pitch %u, width %u, height %u, buf_len %u", x, y,
-          desc->pitch, desc->width, desc->height, desc->buf_size);
+  // LOG_DBG("x %u, y %u, pitch %u, width %u, height %u, buf_len %u", x, y,
+  //        desc->pitch, desc->width, desc->height, desc->buf_size);
   if (desc->width > desc->pitch || x + desc->pitch > config->width ||
       y + desc->height > config->height) {
     LOG_ERR("Pre-conditions failed, buffer desc does not fit LCD");
@@ -274,7 +274,7 @@ static int sh1107_init_device(const struct device *dev) {
       SH110X_MEMORYMODE,
       SH110X_SETCONTRAST,0x4F, // 0x81, 0x4F
       SH110X_DCDC,0x8A,              // 0xAD, 0x8A
-      config->segment_remap?SH110X_SEGREMAP:SH110X_NOOP,   // TODO: make me dependent on config
+      (config->segment_remap?SH110X_SEGREMAP:SH110X_NOOP),
       SH110X_COMSCANINC, // 0xC0
      SH110X_SETDISPSTARTLINE,0x00, // 0xDC 0x00
      SH110X_SETDISPLAYOFFSET,
