@@ -21,8 +21,8 @@
     compatible = "sinowealth,sh1107";
     status = "okay";
     reg = <0x3c>;
-    width = <0x80>;
-    height = <0x40>;
+    width = <0x40>;
+    height = <0x80>;
     segment-offset = <0x00>;
     display-offset = <0x60>;
     reset-gpios = <&gpioa 15 GPIO_ACTIVE_LOW>;

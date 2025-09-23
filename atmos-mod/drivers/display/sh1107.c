@@ -70,7 +70,7 @@ static int sh1107_write(const struct device *dev, uint8_t *buf, size_t len,
 static int sh1107_write_data(const struct device *dev, const uint16_t x,
                              const uint16_t y,
                              const struct display_buffer_descriptor *desc,
-                             const void *buf, const size_t buf_len);
+                             const void *buf);
 // ========================================== Display Driver API
 static int sh1107_display_suspend(const struct device *dev);
 static int sh1107_display_resume(const struct device *dev);
@@ -119,7 +119,7 @@ static struct display_driver_api sh1107_driver_api = {
 
 static inline int sh1107_bus_check(const struct device *dev) {
   const struct sh1107_config *cfg = dev->config;
-  return device_is_ready(cfg->spec.bus) ? 0 : -ENODEV;
+  return i2c_is_ready_dt(&cfg->spec);
 }
 
 static inline int sh1107_reg_read(const struct device *dev, uint8_t start,
@@ -131,6 +131,7 @@ static inline int sh1107_reg_read(const struct device *dev, uint8_t start,
 static int sh1107_write(const struct device *dev, uint8_t *buf, size_t len,
                         bool command) {
   const struct sh1107_config *config = dev->config;
+  // LOG_HEXDUMP_DBG(buf, len, "raw_buf");
   return i2c_burst_write_dt(&config->spec,
                             command ? SH110X_CONTROL_ALL_BYTES_CMD
                                     : SH110X_CONTROL_ALL_BYTES_DATA,
@@ -140,7 +141,7 @@ static int sh1107_write(const struct device *dev, uint8_t *buf, size_t len,
 static int sh1107_write_data(const struct device *dev, const uint16_t x,
                              const uint16_t y,
                              const struct display_buffer_descriptor *desc,
-                             const void *buf, const size_t buf_len) {
+                             const void *buf) {
   const struct sh1107_config *config = dev->config;
   uint8_t x_offset = x + config->segment_offset;
   uint8_t cmd_buf[] = {
@@ -148,21 +149,18 @@ static int sh1107_write_data(const struct device *dev, const uint16_t x,
       SH110X_SETHIGHCOLUMN | ((x_offset >> 4) & SH110X_SETLOWCOLUMN_MASK),
       SH110X_SETPAGEADDR | (y / 8)};
   uint8_t *buf_ptr = (uint8_t *)buf;
-
   for (uint8_t n = 0; n < desc->height / 8; n++) {
     cmd_buf[sizeof(cmd_buf) - 1] = SH110X_SETPAGEADDR | (n + (y / 8));
     LOG_HEXDUMP_DBG(cmd_buf, sizeof(cmd_buf), "cmd_buf");
-
     if (sh1107_write(dev, cmd_buf, sizeof(cmd_buf), true)) {
       return -1;
     }
-
     if (sh1107_write(dev, buf_ptr, desc->width, false)) {
       return -1;
     }
 
     buf_ptr = buf_ptr + desc->width;
-    if (buf_ptr > ((uint8_t *)buf + buf_len)) {
+    if (buf_ptr > ((uint8_t *)buf + desc->buf_size)) {
       LOG_ERR("Exceeded buffer length");
       return -1;
     }
@@ -190,7 +188,6 @@ static int sh1107_display_write(const struct device *dev, const uint16_t x,
                                 const struct display_buffer_descriptor *desc,
                                 const void *buf) {
   const struct sh1107_config *config = dev->config;
-  const struct sh1107_usr_data *buffer = (const struct sh1107_usr_data *)buf;
   __ASSERT(desc->width <= desc->pitch, "Pitch is smaller then width");
   __ASSERT(desc->pitch <= config->width,
            "Pitch in descriptor is larger than screen size");
@@ -200,12 +197,16 @@ static int sh1107_display_write(const struct device *dev, const uint16_t x,
            "Writing outside screen boundaries in horizontal direction");
   __ASSERT(y + desc->height <= config->height,
            "Writing outside screen boundaries in vertical direction");
-
+  LOG_DBG("x %u, y %u, pitch %u, width %u, height %u, buf_len %u", x, y,
+          desc->pitch, desc->width, desc->height, desc->buf_size);
   if (desc->width > desc->pitch || x + desc->pitch > config->width ||
       y + desc->height > config->height) {
+    LOG_ERR("Pre-conditions failed, buffer desc does not fit LCD");
+    LOG_ERR("width (%u) > pitch (%u) || x + pitch (%u) > conf->width (%u) || y + height (%u) > conf->height(%u)",
+            desc->width, desc->pitch, x + desc->pitch, config->width, y + desc->height, config->height);
     return -EINVAL;
   }
-  return sh1107_write_data(dev, x, y, desc, buffer->data, buffer->len);
+  return sh1107_write_data(dev, x, y, desc, buf);
 }
 
 static int sh1107_display_read(const struct device *dev, const uint16_t x,
@@ -245,6 +246,7 @@ static void sh1107_display_get_capabilities(const struct device *dev,
   caps->supported_pixel_formats = PIXEL_FORMAT_MONO10;
   caps->current_pixel_format = PIXEL_FORMAT_MONO10;
   caps->screen_info = SCREEN_INFO_MONO_VTILED;
+  caps->current_orientation = DISPLAY_ORIENTATION_NORMAL;
 }
 
 static int sh1107_display_set_pixel_format(const struct device *dev,
@@ -272,18 +274,20 @@ static int sh1107_init_device(const struct device *dev) {
       SH110X_MEMORYMODE,
       SH110X_SETCONTRAST,0x4F, // 0x81, 0x4F
       SH110X_DCDC,0x8A,              // 0xAD, 0x8A
-      SH110X_SEGREMAP,   // TODO: make me dependent on config
+      config->segment_remap?SH110X_SEGREMAP:SH110X_NOOP,   // TODO: make me dependent on config
       SH110X_COMSCANINC, // 0xC0
-      SH110X_SETDISPSTARTLINE,0, // 0xDC 0x00
-      SH110X_SETDISPLAYOFFSET,
-      SH110X_SETPRECHARGE,
-      config->prechargep, // 0xd9, 0x22,
-      SH110X_SETVCOMDETECT,0x35, // 0xdb, 0x35,
-      SH110X_SETMULTIPLEX,
-      config->multiplex_ratio,    // 0xa8, 0x3f,
-      SH110X_DISPLAYALLON_RESUME, // 0xa4
-      config->display_offset,     // 0xd3, 0x60,
-      (config->color_inversion ? SH110X_INVERTDISPLAY : SH110X_NORMALDISPLAY),
+     SH110X_SETDISPSTARTLINE,0x00, // 0xDC 0x00
+     SH110X_SETDISPLAYOFFSET,
+     config->display_offset,
+     SH110X_SETPRECHARGE,
+     config->prechargep, // 0xd9, 0x22,
+     SH110X_SETVCOMDETECT,0x35, // 0xdb, 0x35,
+     SH110X_SETMULTIPLEX,
+     config->multiplex_ratio,    // 0xa8, 0x3f,
+     SH110X_DISPLAYALLON_RESUME, // 0xa4
+     SH110X_SETDISPLAYOFFSET,
+     config->display_offset,     // 0xd3, 0x60,
+     (config->color_inversion ? SH110X_INVERTDISPLAY : SH110X_NORMALDISPLAY),
   };
   // clang-format on
   /* Reset if pin connected */
@@ -310,11 +314,8 @@ static int sh1107_init_device(const struct device *dev) {
 
 static int sh1107_init(const struct device *dev) {
   const struct sh1107_config *config = dev->config;
-
   LOG_DBG("");
-
   k_sleep(K_TIMEOUT_ABS_MS(config->ready_time_ms));
-
   if (!sh1107_bus_ready(dev)) {
     LOG_ERR("Bus device %s not ready!", dev->name);
     return -EINVAL;
@@ -324,6 +325,7 @@ static int sh1107_init(const struct device *dev) {
     int ret;
     ret = gpio_pin_configure_dt(&config->reset, GPIO_OUTPUT_INACTIVE);
     if (ret < 0) {
+      LOG_ERR("Unable to reset display (%d)", ret);
       return ret;
     }
   }
@@ -332,32 +334,34 @@ static int sh1107_init(const struct device *dev) {
     LOG_ERR("Failed to initialize device!");
     return -EIO;
   }
-
   return 0;
 }
 
 static inline bool sh1107_bus_ready(const struct device *dev) {
   const struct sh1107_config *config = dev->config;
-
   return config->bus_io->check(dev);
 }
 
+// clang-format off
 #define SH1107_CONFIG_I2C(inst)                                                \
-  {.spec = I2C_DT_SPEC_INST_GET(inst),                                         \
-   .reset = GPIO_DT_SPEC_GET_OR(inst, reset_gpios, {0}),                       \
-   .bus_io = &sh1107_bus_io_i2c,                                               \
-   .height = DT_INST_PROP(inst, height),                                       \
-   .width = DT_INST_PROP(inst, width),                                         \
-   .segment_offset = DT_INST_PROP(inst, segment_offset),                       \
-   .page_offset = DT_INST_PROP(inst, page_offset),                             \
-   .display_offset = DT_INST_PROP(inst, display_offset),                       \
-   .multiplex_ratio = DT_INST_PROP(inst, multiplex_ratio),                     \
-   .prechargep = DT_INST_PROP(inst, prechargep),                               \
-   .segment_remap = DT_INST_PROP(inst, segment_remap),                         \
-   .com_invdir = DT_INST_PROP(inst, com_invdir),                               \
-   .com_sequential = DT_INST_PROP(inst, com_sequential),                       \
-   .color_inversion = DT_INST_PROP(inst, inversion_on),                        \
-   .ready_time_ms = DT_INST_PROP(inst, ready_time_ms)}
+  {                                                                            \
+    .spec = I2C_DT_SPEC_INST_GET(inst),                                        \
+    .reset = GPIO_DT_SPEC_GET_OR(inst, reset_gpios, {0}),                      \
+    .bus_io = &sh1107_bus_io_i2c,                                              \
+    .height = DT_INST_PROP(inst, height),                                      \
+    .width = DT_INST_PROP(inst, width),                                        \
+    .segment_offset = DT_INST_PROP(inst, segment_offset),                      \
+    .page_offset = DT_INST_PROP(inst, page_offset),                            \
+    .display_offset = DT_INST_PROP(inst, display_offset),                      \
+    .multiplex_ratio = DT_INST_PROP(inst, multiplex_ratio),                    \
+    .prechargep = DT_INST_PROP(inst, prechargep),                              \
+    .segment_remap = DT_INST_PROP(inst, segment_remap),                        \
+    .com_invdir = DT_INST_PROP(inst, com_invdir),                              \
+    .com_sequential = DT_INST_PROP(inst, com_sequential),                      \
+    .color_inversion = DT_INST_PROP(inst, inversion_on),                       \
+    .ready_time_ms = DT_INST_PROP(inst, ready_time_ms)                         \
+  }
+// clang-format on
 
 // clang-format off
 #define SH1107_DEFINE(inst)                                                          \

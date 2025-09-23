@@ -3,6 +3,7 @@
 
 #include <zephyr/device.h>
 
-int i2c_devices_detect(const struct device* i2c_controller);
+int i2c1_devices_detect(void);
+int i2c2_devices_detect(void);
 
 #endif // _ATMOS_I2C_H_
