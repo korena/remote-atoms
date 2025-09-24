@@ -1,7 +1,7 @@
 #include "bme_sensor.h"
-#include <errno.h>
 #include "zephyr/drivers/sensor.h"
 #include "zephyr/sys/printk.h"
+#include <errno.h>
 #include <zephyr/device.h>
 
 const struct device *bme280_dev = NULL;
@@ -23,7 +23,6 @@ error_t init_bme280_device(void) {
   }
 
   printk("Found device \"%s\"\n", bme280_dev->name);
-  
   return 0;
 }
 
@@ -36,5 +35,9 @@ error_t get_bme280_data(struct bme280_data *data) {
   sensor_channel_get(bme280_dev, SENSOR_CHAN_AMBIENT_TEMP, &data->temp);
   sensor_channel_get(bme280_dev, SENSOR_CHAN_PRESS, &data->press);
   sensor_channel_get(bme280_dev, SENSOR_CHAN_HUMIDITY, &data->humidity);
+  printk("<BME280>\nTemperature [°C]: %d.%06d\nPressure [hPa]: %d.%06d "
+         "\nHumidity [%%RH] : %d.%06d\n",
+         data->temp.val1, data->temp.val2, data->press.val1, data->press.val2,
+         data->humidity.val1, data->humidity.val2);
   return 0;
 }

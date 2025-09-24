@@ -50,5 +50,12 @@ error_t get_scd41_data(struct scd41_data *scd41_data) {
                      &scd41_data->relative_humidity);
   sensor_channel_get(scd41_dev, SENSOR_CHAN_CO2,
                      &scd41_data->co2_concentration);
+
+  printk("<SCD41>\nCO2 concentration [ppm]: %d.%07d\nTemperature [°C] : "
+         "%d.%06d\nHumidity [%%RH]: %d.%06d\n",
+         scd41_data->co2_concentration.val1, scd41_data->co2_concentration.val2,
+         scd41_data->temperature.val1, scd41_data->temperature.val2,
+         scd41_data->relative_humidity.val1,
+         scd41_data->relative_humidity.val2);
   return 0;
 }

@@ -4,8 +4,6 @@
 #include "scd41_sensor.h"
 #include "zephyr/sys/printk.h"
 #include <stdint.h>
-#include <stdio.h>
-#include <string.h>
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/gpio.h>
@@ -27,10 +25,48 @@ static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
 static const struct gpio_dt_spec led1 = GPIO_DT_SPEC_GET(LED1_NODE, gpios);
 static const struct gpio_dt_spec sw0 = GPIO_DT_SPEC_GET(SW0_NODE, gpios);
 
-int run_atmos_app() {
+static struct gpio_callback button_cb_data;
+static void button_handler(const struct device* dev, struct gpio_callback* cb, unsigned int pins);
+
+static void button_handler(const struct device* dev, struct gpio_callback* cb, unsigned int pins)
+{
+   
+
+}
+
+int gpio_init(void) {
   int ret;
-    struct bme280_data bme280_data;
-    struct scd41_data scd41_data;
+  ret = gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE);
+  if (ret < 0) {
+    return 0;
+  }
+  ret = gpio_pin_configure_dt(&led1, GPIO_OUTPUT_ACTIVE);
+  if (ret < 0) {
+    return 0;
+  }
+
+  ret = gpio_pin_configure_dt(&sw0, GPIO_INPUT);
+
+   // enable interrupt on button for rising edge
+    ret = gpio_pin_interrupt_configure_dt(&sw0, GPIO_INT_EDGE_RISING);
+	if (ret != 0) {
+		printk("Error %d: failed to configure interrupt on %s pin %d\n", ret, sw0.port->name, sw0.pin);
+		return ret;
+	}
+
+    // initialize callback structure for button interrupt
+    gpio_init_callback(&button_cb_data, button_handler, BIT(sw0.pin));
+
+    // attach callback function to button interrupt
+    gpio_add_callback(sw0.port, &button_cb_data);
+
+  return ret;
+}
+
+int run_atmos_app(void) {
+  int ret;
+  struct bme280_data bme280_data;
+  struct scd41_data scd41_data;
 
   if (!gpio_is_ready_dt(&sw0) || !gpio_is_ready_dt(&led) ||
       !gpio_is_ready_dt(&led1)) {
@@ -52,98 +88,70 @@ int run_atmos_app() {
     return 0;
   }
 
-    ret = init_bme280_device();
+  ret = init_bme280_device();
+  if (ret < 0) {
+    return 0;
+  }
+
+  ret = init_scd41_device();
+  if (ret < 0) {
+    return 0;
+  }
+
+
+  // const struct device *sgp40_dev = get_sgp40_device();
+
+  while (1) {
+    ret = gpio_pin_toggle_dt(&led);
     if (ret < 0) {
       return 0;
     }
-  
-    ret = init_scd41_device();
+    ret = gpio_pin_toggle_dt(&led1);
     if (ret < 0) {
       return 0;
     }
-  
-    ret = gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE);
+    // BME280
+    ret = get_bme280_data(&bme280_data);
     if (ret < 0) {
       return 0;
     }
-    ret = gpio_pin_configure_dt(&led1, GPIO_OUTPUT_ACTIVE);
+    // SCD41
+    ret = get_scd41_data(&scd41_data);
     if (ret < 0) {
       return 0;
     }
-  
-    // const struct device *sgp40_dev = get_sgp40_device();
-  
-    while (1) {
-      ret = gpio_pin_toggle_dt(&led);
-      if (ret < 0) {
-        return 0;
-      }
-      ret = gpio_pin_toggle_dt(&led1);
-      if (ret < 0) {
-        return 0;
-      }
-      // BME280
-      ret = get_bme280_data(&bme280_data);
-      if (ret < 0) {
-        return 0;
-      }
-      printk("<BME280>\nTemperature [°C]: %d.%06d\nPressure [hPa]: %d.%06d "
-             "\nHumidity [%%RH] : %d.%06d\n",
-             bme280_data.temp.val1, bme280_data.temp.val2,
-             bme280_data.press.val1, bme280_data.press.val2,
-             bme280_data.humidity.val1, bme280_data.humidity.val2);
-      char bme_str[24];
-      printd("BME280", 0) ;
-      printd("Temp:", 1) ;
-      snprintf(bme_str, sizeof(bme_str), "%d.%03d", bme280_data.temp.val1, bme280_data.temp.val2);
-      printd(bme_str, 2) ;
-      memset(bme_str, '\0', sizeof(bme_str));
-      printd("Press:", 3) ;
-      snprintf(bme_str, sizeof(bme_str), "%d.%03d", bme280_data.press.val1, bme280_data.press.val2);
-      printd(bme_str, 4) ;
-      memset(bme_str, '\0', sizeof(bme_str));
-      printd("Hum:", 5) ;
-      snprintf(bme_str, sizeof(bme_str), "%d.%03d", bme280_data.humidity.val1, bme280_data.humidity.val2);
-      printd(bme_str, 6) ;
-      memset(bme_str, '\0', sizeof(bme_str));
-      // SCD41
-      ret = get_scd41_data(&scd41_data);
-      printk("<SCD41>\nCO2 concentration [ppm]: %d.%06d\nTemperature [°C] : "
-             "%d.%06d\nHumidity [%%RH]: %d.%06d\n",
-             scd41_data.co2_concentration.val1,
-             scd41_data.co2_concentration.val2, scd41_data.temperature.val1,
-             scd41_data.temperature.val2, scd41_data.relative_humidity.val1,
-             scd41_data.relative_humidity.val2);
-  
-      //    // SGP40
-      //	  struct sensor_value gas;
-      //	  struct sensor_value comp_t;
-      //	  struct sensor_value comp_rh;
-      //		comp_t.val1 = temp.val1; /* Temp [°C] */
-      //		comp_rh.val1 = humidity.val1; /* RH [%] */
-      //		sensor_attr_set(sgp40_dev,
-      //				SENSOR_CHAN_GAS_RES,
-      //				SENSOR_ATTR_SGP40_TEMPERATURE,
-      //				&comp_t);
-      //		sensor_attr_set(sgp40_dev,
-      //				SENSOR_CHAN_GAS_RES,
-      //				SENSOR_ATTR_SGP40_HUMIDITY,
-      //				&comp_rh);
-      //		if (sensor_sample_fetch(sgp40_dev)) {
-      //			printf("Failed to fetch sample from SGP40
-      // device.\n");
-      //			return 0;
-      //		}
-      //
-      //		sensor_channel_get(sgp40_dev, SENSOR_CHAN_GAS_RES,
-      // &gas);
-      //		printf("SHT4X: %.2f Temp. [C] ; %0.2f RH [%%] -- SGP40:
-      // %d Gas
-      //[a.u.]\n", 		       sensor_value_to_double(&temp),
-      //		       sensor_value_to_double(&humidity),
-      //		       gas.val1);
-      //
-      k_msleep(SLEEP_TIME_MS);
-    }
+
+    ret = page_c(&bme280_data.temp, &bme280_data.humidity, &bme280_data.press,
+                 &scd41_data.co2_concentration);
+    //    // SGP40
+    //	  struct sensor_value gas;
+    //	  struct sensor_value comp_t;
+    //	  struct sensor_value comp_rh;
+    //		comp_t.val1 = temp.val1; /* Temp [°C] */
+    //		comp_rh.val1 = humidity.val1; /* RH [%] */
+    //		sensor_attr_set(sgp40_dev,
+    //				SENSOR_CHAN_GAS_RES,
+    //				SENSOR_ATTR_SGP40_TEMPERATURE,
+    //				&comp_t);
+    //		sensor_attr_set(sgp40_dev,
+    //				SENSOR_CHAN_GAS_RES,
+    //				SENSOR_ATTR_SGP40_HUMIDITY,
+    //				&comp_rh);
+    //		if (sensor_sample_fetch(sgp40_dev)) {
+    //			printf("Failed to fetch sample from SGP40
+    // device.\n");
+    //			return 0;
+    //		}
+    //
+    //		sensor_channel_get(sgp40_dev, SENSOR_CHAN_GAS_RES,
+    // &gas);
+    //		printf("SHT4X: %.2f Temp. [C] ; %0.2f RH [%%] -- SGP40:
+    // %d Gas
+    //[a.u.]\n", 		       sensor_value_to_double(&temp),
+    //		       sensor_value_to_double(&humidity),
+    //		       gas.val1);
+    //
+    k_msleep(SLEEP_TIME_MS);
+  }
   return 0;
 }
