@@ -16,6 +16,6 @@
 #include <test.h>
 
 int main(void) {
-  //return run_atmos_app();
-  return run_test_gpio_input();
+  return run_atmos_app();
+  //return run_test_gpio_input();
 }

@@ -1,5 +1,7 @@
 #include "display.h"
+#include "bme_sensor.h"
 #include "fonts/cfb_font_1016.h"
+#include "scd41_sensor.h"
 #include "zephyr/sys/printk.h"
 #include <errno.h>
 #include <stdint.h>
@@ -10,6 +12,7 @@
 #include <zephyr/types.h>
 
 const struct device *sh1107_dev = NULL;
+curr_display_page_t current_display_page = PAGE_C;
 
 error_t init_display_device(void) {
   sh1107_dev = DEVICE_DT_GET_ANY(sinowealth_sh1107);
@@ -73,25 +76,71 @@ error_t display_clear(void) {
   return 0;
 }
 
-error_t page_c(const struct sensor_value *temp,
-               const struct sensor_value *humidity,
-               const struct sensor_value *press,
-               const struct sensor_value *co2) {
+error_t set_display_choice(curr_display_page_t page) {
+  current_display_page = page;
+  return 0;
+}
+error_t get_display_choice(curr_display_page_t *page) {
+  *page = current_display_page;
+  return 0;
+}
+error_t display_render_page(void) {
+  switch (current_display_page) {
+  case PAGE_A:
+    return display_page_a();
+  case PAGE_B:
+    return display_page_b();
+  case PAGE_C:
+    return display_page_c();
+  default:
+    return -1;
+  }
+}
+
+error_t display_page_a(void) { 
+  display_clear();
+  printd("Page A", 0);
+  return 0;
+}
+error_t display_page_b(void) {
+  display_clear();
+  printd("Page B", 0);
+  return 0;
+}
+error_t display_page_c(void) {
+  struct bme280_data bme280_data;
+  struct scd41_data scd41_data;
   char bme_str[24];
-  printd("Temp:", 0);
-  snprintf(bme_str, sizeof(bme_str), "%d.%03d", temp->val1, temp->val2);
+  int ret;
+  // BME280
+  ret = get_bme280_data(&bme280_data);
+  if (ret < 0) {
+    return 0;
+  }
+  // SCD41
+  ret = get_scd41_data(&scd41_data);
+  if (ret < 0) {
+    return 0;
+  }
+  printd("Temp: ", 0);
+  snprintf(bme_str, sizeof(bme_str), "%d.%03d", bme280_data.temp.val1,
+           bme280_data.temp.val2);
   printd(bme_str, 1);
   memset(bme_str, '\0', sizeof(bme_str));
   printd("Press:", 2);
-  snprintf(bme_str, sizeof(bme_str), "%d.%03d", press->val1, press->val2);
+  snprintf(bme_str, sizeof(bme_str), "%d.%03d", bme280_data.press.val1,
+           bme280_data.press.val2);
   printd(bme_str, 3);
   memset(bme_str, '\0', sizeof(bme_str));
-  printd("Hum:", 4);
-  snprintf(bme_str, sizeof(bme_str), "%d.%03d", humidity->val1, humidity->val2);
+  printd("Hum:  ", 4);
+  snprintf(bme_str, sizeof(bme_str), "%d.%03d", bme280_data.humidity.val1,
+           bme280_data.humidity.val2);
   printd(bme_str, 5);
   memset(bme_str, '\0', sizeof(bme_str));
-  printd("CO2:", 6);
-  snprintf(bme_str, sizeof(bme_str), "%d.%03d", co2->val1, co2->val2);
+  printd("CO2:  ", 6);
+  snprintf(bme_str, sizeof(bme_str), "%d.%03d",
+           scd41_data.co2_concentration.val1,
+           scd41_data.co2_concentration.val2);
   printd(bme_str, 7);
   memset(bme_str, '\0', sizeof(bme_str));
   return 0;
