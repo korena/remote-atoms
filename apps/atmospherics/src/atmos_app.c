@@ -3,6 +3,7 @@
 #include "display.h"
 #include "scd41_sensor.h"
 #include "zephyr/sys/printk.h"
+#include "zephyr/sys/util_macro.h"
 #include <stdint.h>
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
@@ -13,62 +14,59 @@
 #include <zephyr/types.h>
 
 /* 1000 msec = 1 sec */
-#define SLEEP_TIME_MS 10000
+#define SLEEP_TIME_MS 5000
+#define DEBOUNCE_DELAY_MS 50
 /*every hour*/
 #define SCD41_PRESS_UPDATE_PERIOD_SEC (60 * 60 * 1000)
 /* The devicetree node identifier for the "led0" alias. */
 #define LED0_NODE DT_ALIAS(led0)
 #define LED1_NODE DT_ALIAS(led1)
-#define SW0_NODE DT_ALIAS(sw0)
 
 static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
 static const struct gpio_dt_spec led1 = GPIO_DT_SPEC_GET(LED1_NODE, gpios);
-static const struct gpio_dt_spec sw0 = GPIO_DT_SPEC_GET(SW0_NODE, gpios);
 
-static struct gpio_callback button_cb_data;
-static void button_handler(const struct device* dev, struct gpio_callback* cb, unsigned int pins);
-
-static void button_handler(const struct device* dev, struct gpio_callback* cb, unsigned int pins)
-{
-   
-
-}
-
-int gpio_init(void) {
-  int ret;
-  ret = gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE);
-  if (ret < 0) {
-    return 0;
-  }
-  ret = gpio_pin_configure_dt(&led1, GPIO_OUTPUT_ACTIVE);
-  if (ret < 0) {
-    return 0;
-  }
-
-  ret = gpio_pin_configure_dt(&sw0, GPIO_INPUT);
-
-   // enable interrupt on button for rising edge
-    ret = gpio_pin_interrupt_configure_dt(&sw0, GPIO_INT_EDGE_RISING);
-	if (ret != 0) {
-		printk("Error %d: failed to configure interrupt on %s pin %d\n", ret, sw0.port->name, sw0.pin);
-		return ret;
-	}
-
-    // initialize callback structure for button interrupt
-    gpio_init_callback(&button_cb_data, button_handler, BIT(sw0.pin));
-
-    // attach callback function to button interrupt
-    gpio_add_callback(sw0.port, &button_cb_data);
-
-  return ret;
-}
+//int gpio_init(void) {
+//  int ret;
+//  ret = gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE);
+//  if (ret < 0) {
+//    return 0;
+//  }
+//  ret = gpio_pin_configure_dt(&led1, GPIO_OUTPUT_ACTIVE);
+//  if (ret < 0) {
+//    return 0;
+//  }
+//
+//  // Initialize work item
+//  k_work_init_delayable(&button_work, button_work_handler);
+//
+//  // Make sure that the button was initialized
+//  if (!gpio_is_ready_dt(&sw0)) {
+//    printk("ERROR: button not ready\r\n");
+//    return 0;
+//  }
+//
+//  ret = gpio_pin_configure_dt(&sw0, GPIO_INPUT);
+//
+//  // enable interrupt on button for rising edge
+//  ret = gpio_pin_interrupt_configure(&sw0,BIT(sw0.pin), GPIO_INT_LEVEL_ACTIVE);
+//  if (ret != 0) {
+//    printk("Error %d: failed to configure interrupt on %s pin %d\n", ret,
+//           sw0.port->name, sw0.pin);
+//    return ret;
+//  }
+//
+//  gpio_init_callback(&sw0_cb_data, gpio_isr, BIT(sw0.pin));
+//  gpio_add_callback(sw0.port, &sw0_cb_data);
+//
+//  return ret;
+//}
 
 int run_atmos_app(void) {
   int ret;
   struct bme280_data bme280_data;
   struct scd41_data scd41_data;
 
-  if (!gpio_is_ready_dt(&sw0) || !gpio_is_ready_dt(&led) ||
+  if (!gpio_is_ready_dt(&led) ||
       !gpio_is_ready_dt(&led1)) {
     return 0;
   }
@@ -97,7 +95,6 @@ int run_atmos_app(void) {
   if (ret < 0) {
     return 0;
   }
-
 
   // const struct device *sgp40_dev = get_sgp40_device();
 
@@ -151,6 +148,7 @@ int run_atmos_app(void) {
     //		       sensor_value_to_double(&humidity),
     //		       gas.val1);
     //
+    
     k_msleep(SLEEP_TIME_MS);
   }
   return 0;

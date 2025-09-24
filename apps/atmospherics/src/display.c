@@ -92,7 +92,7 @@ error_t page_c(const struct sensor_value *temp,
   memset(bme_str, '\0', sizeof(bme_str));
   printd("CO2:", 6);
   snprintf(bme_str, sizeof(bme_str), "%d.%03d", co2->val1, co2->val2);
-  printd(bme_str, 8);
+  printd(bme_str, 7);
   memset(bme_str, '\0', sizeof(bme_str));
   return 0;
 }
