@@ -1,1 +1,2 @@
 add_subdirectory_ifdef(CONFIG_SCD41 scd41)
+add_subdirectory_ifdef(CONFIG_SPS30 sps30)

@@ -1,0 +1,8 @@
+config SPS30
+	bool "Sensirion SPS30 sensor"
+	default y
+	depends on DT_HAS_SENSIRION_SPS30_ENABLED
+	select I2C
+	select CRC
+	help
+	  Sensirion SPS30 Particulate matter sensor

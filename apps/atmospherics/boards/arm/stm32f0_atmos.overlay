@@ -46,6 +46,13 @@
 //        enable-selftest;
 //    };
 
+    sps30: sps30@69 {
+      compatible = "sensirion,sps30";
+      status = "okay";
+      reg = <0x69>;
+      measurement-output-format = <500>;
+    };
+
     scd41: scd41@62 {
       compatible = "sensirion,scd41";
       status = "okay";

@@ -1,0 +1,14 @@
+# Copyright (c) 2019, Linaro Limited
+# SPDX-License-Identifier: Apache-2.0
+
+description: Sensirion SPS30 integrated environmental sensor
+
+compatible: "sensirion,sps30"
+
+include: [sensor-device.yaml, i2c-device.yaml]
+
+properties:
+  measurement-output-format:
+    type: int
+    required: true
+    description: Measurement output Mode, <0x300> for float, <0x500> for Uint16.
