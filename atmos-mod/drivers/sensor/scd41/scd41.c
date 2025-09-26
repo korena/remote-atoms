@@ -239,7 +239,7 @@ static int scd41_sample_fetch(const struct device *dev,
     }
   }
   if (reps >= 5) {
-    //  LOG_DBG("Exceeded deadline for data ready");
+    LOG_DBG("Exceeded deadline for data ready");
     return -EAGAIN;
   }
   error = scd41_read_measurement(dev, &co2_concentration, &temperature,

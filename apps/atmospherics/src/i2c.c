@@ -60,7 +60,7 @@ int i2c2_devices_detect(void)
   }
   printk("Scanning I2C2 bus ...\n");
 
-  uint8_t addr[5] = {0x29, 0x53, 0x59, 0x68, 0x76};
+  uint8_t addr[6] = {0x29, 0x53, 0x59, 0x68, 0x69, 0x76};
 
   for (int i = 0; i < 5; i++) {
   ret = i2c_read(i2c_dev, &data, 1, addr[i]);

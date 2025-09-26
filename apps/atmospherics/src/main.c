@@ -16,6 +16,7 @@
 #include <test.h>
 
 int main(void) {
+  // return run_test_i2c_detect();
   return run_atmos_app();
   //return run_test_gpio_input();
 }

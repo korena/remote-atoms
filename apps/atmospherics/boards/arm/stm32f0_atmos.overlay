@@ -50,7 +50,7 @@
       compatible = "sensirion,sps30";
       status = "okay";
       reg = <0x69>;
-      measurement-output-format = <500>;
+      measurement-output-format = <0x500>;
     };
 
     scd41: scd41@62 {

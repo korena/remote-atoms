@@ -10,12 +10,12 @@ target_sources(app PRIVATE
   src/bme_sensor.c
   src/sgp_sensor.c
   src/scd41_sensor.c
+  src/sps30_sensor.c
   src/display.c
   src/atmos_gpio.c
   src/test.c
 )
 
 target_include_directories(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/inc)
-set(gen_dir ${ZEPHYR_BINARY_DIR}/include/generated/)
 
 

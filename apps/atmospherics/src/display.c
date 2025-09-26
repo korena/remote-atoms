@@ -2,6 +2,7 @@
 #include "bme_sensor.h"
 #include "fonts/cfb_font_1016.h"
 #include "scd41_sensor.h"
+#include "sps30_sensor.h"
 #include "zephyr/sys/printk.h"
 #include <errno.h>
 #include <stdint.h>
@@ -98,13 +99,58 @@ error_t display_render_page(void) {
 }
 
 error_t display_page_a(void) { 
+  struct sps30_data sps30_data = {0};
+  char str[24];
   display_clear();
-  printd("Page A", 0);
+  int ret;
+  ret = get_sps30_data(&sps30_data);
+  if (ret < 0) {
+    return 0;
+  }
+
+  printd("MC1.0:", 0);
+  snprintf(str, sizeof(str), "%u", sps30_data.mc_1p0.val1);
+  printd(str, 1);
+  memset(str, '\0', sizeof(str));
+  printd("MC2.5:", 2);
+  snprintf(str, sizeof(str), "%u", sps30_data.mc_2p5.val1);
+  printd(str, 3);
+  memset(str, '\0', sizeof(str));
+  printd("MC4.0:", 4);
+  snprintf(str, sizeof(str), "%u", sps30_data.mc_4p0.val1);
+  printd(str, 5);
+  memset(str, '\0', sizeof(str));
+  printd("MC10:", 6);
+  snprintf(str, sizeof(str), "%u", sps30_data.mc_10p0.val1);
+  printd(str, 7);
+  memset(str, '\0', sizeof(str));
   return 0;
 }
 error_t display_page_b(void) {
+  struct sps30_data sps30_data = {0};
+  char str[24];
   display_clear();
-  printd("Page B", 0);
+  int ret;
+  ret = get_sps30_data(&sps30_data);
+  if (ret < 0) {
+    return 0;
+  }
+  printd("NC0.5:", 0);
+  snprintf(str, sizeof(str), "%u", sps30_data.nc_0p5.val1);
+  printd(str, 1);
+  memset(str, '\0', sizeof(str));
+  printd("NC1.0:", 2);
+  snprintf(str, sizeof(str), "%u", sps30_data.nc_1p0.val1);
+  printd(str, 3);
+  memset(str, '\0', sizeof(str));
+  printd("NC2.5:", 4);
+  snprintf(str, sizeof(str), "%u", sps30_data.nc_2p5.val1);
+  printd(str, 5);
+  memset(str, '\0', sizeof(str));
+  printd("NC4.0:", 6);
+  snprintf(str, sizeof(str), "%u", sps30_data.nc_4p0.val1);
+  printd(str, 7);
+  memset(str, '\0', sizeof(str));
   return 0;
 }
 error_t display_page_c(void) {

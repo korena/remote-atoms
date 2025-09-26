@@ -4,6 +4,7 @@
 #include "display.h"
 #include "scd41_sensor.h"
 #include "atmos_app.h"
+#include "sps30_sensor.h"
 #include <stdint.h>
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
@@ -21,8 +22,6 @@
 
 int run_atmos_app(void) {
   int ret;
-  struct bme280_data bme280_data;
-  struct scd41_data scd41_data;
 
   ret = gpio_init();
   if (ret < 0) {
@@ -45,6 +44,11 @@ int run_atmos_app(void) {
   }
 
   ret = init_scd41_device();
+  if (ret < 0) {
+    return 0;
+  }
+
+  ret = init_sps30_device();
   if (ret < 0) {
     return 0;
   }

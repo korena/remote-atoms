@@ -11,6 +11,7 @@
 #include "sps30.h"
 #include <zephyr/logging/log.h>
 
+#define SCD41_I2C_ADDR_62 (0x69)
 // sensirion ported defines
 #define SENSIRION_WORD_SIZE (2)
 #define NO_ERROR (0)
@@ -30,6 +31,30 @@ LOG_MODULE_REGISTER(SPS30, CONFIG_SENSOR_LOG_LEVEL);
 #warning "SPS30 driver enabled without any devices"
 #endif
 
+typedef enum {
+  SPS30_START_MEASUREMENT_CMD_ID = 0x10,
+  SPS30_STOP_MEASUREMENT_CMD_ID = 0x104,
+  SPS30_READ_DATA_READY_FLAG_CMD_ID = 0x202,
+  SPS30_READ_MEASUREMENT_VALUES_UINT16_CMD_ID = 0x300,
+  SPS30_READ_MEASUREMENT_VALUES_FLOAT_CMD_ID = 0x300,
+  SPS30_SLEEP_CMD_ID = 0x1001,
+  SPS30_WAKE_UP_CMD_ID = 0x1103,
+  SPS30_START_FAN_CLEANING_CMD_ID = 0x5607,
+  SPS30_READ_AUTO_CLEANING_INTERVAL_CMD_ID = 0x8004,
+  SPS30_WRITE_AUTO_CLEANING_INTERVAL_CMD_ID = 0x8004,
+  SPS30_READ_PRODUCT_TYPE_CMD_ID = 0xd002,
+  SPS30_READ_SERIAL_NUMBER_CMD_ID = 0xd033,
+  SPS30_READ_FIRMWARE_VERSION_CMD_ID = 0xd100,
+  SPS30_READ_DEVICE_STATUS_REGISTER_CMD_ID = 0xd206,
+  SPS30_CLEAR_DEVICE_STATUS_REGISTER_CMD_ID = 0xd210,
+  SPS30_DEVICE_RESET_CMD_ID = 0xd304,
+} SPS30_CMD_ID;
+
+typedef enum {
+  SPS30_OUTPUT_FORMAT_OUTPUT_FORMAT_FLOAT = 768,
+  SPS30_OUTPUT_FORMAT_OUTPUT_FORMAT_UINT16 = 1280,
+} sps30_output_format;
+
 typedef int (*sps30_bus_check_fn)(const struct device *dev);
 typedef int (*sps30_reg_read_fn)(const struct device *dev, uint8_t start,
                                  uint8_t *buf, int size);
@@ -39,12 +64,16 @@ typedef int (*sps30_reg_write_fn)(const struct device *dev, uint8_t reg,
 struct sps30_data {
   uint8_t communication_buffer[60];
   uint16_t serial_number;
-  uint16_t tps;
-  uint16_t pm0_5;
-  uint16_t pm1_0;
-  uint16_t pm2_5;
-  uint16_t pm4_0;
-  uint16_t pm10_0;
+  uint16_t mc_1p0;
+  uint16_t mc_2p5;
+  uint16_t mc_4p0;
+  uint16_t mc_10p0;
+  uint16_t nc_0p5;
+  uint16_t nc_1p0;
+  uint16_t nc_2p5;
+  uint16_t nc_4p0;
+  uint16_t nc_10p0;
+  uint16_t typical_particle_size;
 };
 
 struct sps30_config {
@@ -257,12 +286,38 @@ uint16_t sensirion_i2c_add_uint32_t_to_buffer(uint8_t *buffer, uint16_t offset,
 
 int sps30_chip_init(const struct device *dev) {
   int err;
+  int8_t serial_number[32] = {0};
+  int8_t product_type[8] = {0};
   err = sps30_bus_check(dev);
   if (err < 0) {
     LOG_DBG("bus check failed %d", err);
     return err;
   }
 
+  err = sps30_stop_measurement(dev);
+  if (err < 0) {
+    LOG_DBG("Failed to stop measurement %d", err);
+    return err;
+  }
+
+  err = sps30_read_serial_number(dev, serial_number, 32);
+  if (err < 0) {
+    LOG_DBG("Failed to read serial number %d", err);
+    return err;
+  }
+  LOG_INF("serial_number: %s", serial_number);
+  sps30_read_product_type(dev, product_type, 8);
+  if (err < 0) {
+    LOG_DBG("Failed to read serial number %d", err);
+    return err;
+  }
+  LOG_INF("product_type: %s\n", product_type);
+  err = sps30_start_measurement(dev);
+  if (err < 0) {
+    LOG_DBG("Failed to start measurement %d", err);
+    return err;
+  }
+  k_msleep(100);
   return 0;
 }
 static inline int sps30_bus_check(const struct device *dev) {
@@ -282,25 +337,103 @@ static inline int sps30_reg_write(const struct device *dev, uint8_t reg,
   return i2c_reg_write_byte_dt(&cfg->spec, reg, val);
 }
 
-
 static int sps30_sample_fetch(const struct device *dev,
                               enum sensor_channel chan) {
+
+  int16_t error = NO_ERROR;
+  uint16_t data_ready = false;
+  uint16_t repetition = 0;
+
+  __ASSERT_NO_MSG(chan == SENSOR_CHAN_ALL);
+
+  error = sps30_read_data_ready_flag(dev, &data_ready);
+  if (error != NO_ERROR) {
+    LOG_ERR("error checking for data ready status (%i)", error);
+    return error;
+  }
+
+  while (!data_ready && repetition++ < 6) {
+    k_msleep(1000);
+    error = sps30_read_data_ready_flag(dev, &data_ready);
+    if (error != NO_ERROR) {
+      LOG_ERR("error checking for data ready status (%i)", error);
+      return error;
+    }
+  }
+
+  if (repetition >= 5) {
+    LOG_DBG("Exceeded deadline for data ready");
+    return -EAGAIN;
+  }
+  struct sps30_data *data = dev->data;
+  error = sps30_read_measurement_values_uint16(
+      dev, &data->mc_1p0, &data->mc_2p5, &data->mc_4p0, &data->mc_10p0,
+      &data->nc_0p5, &data->nc_1p0, &data->nc_2p5, &data->nc_4p0,
+      &data->nc_10p0, &data->typical_particle_size);
+  if (error != NO_ERROR) {
+    LOG_ERR("error executing read_measurement_values_uint16(): %i\n", error);
+  }
   return 0;
 }
-
 
 static int sps30_channel_get(const struct device *dev, enum sensor_channel chan,
                              struct sensor_value *val) {
-  return 0;
+  const struct sps30_data *data = dev->data;
+  if (chan > SENSOR_CHAN_ALL) {
+    // handle extended channels
+    switch ((enum sensor_channel_ext)chan) {
+    case SENSOR_CHAN_PM_MC_1p0:
+      val->val1 = data->mc_1p0;
+      val->val2 = 0;
+      return 0;
+    case SENSOR_CHAN_PM_MC_2p5:
+      val->val1 = data->mc_2p5;
+      val->val2 = 0;
+      return 0;
+    case SENSOR_CHAN_PM_MC_4p0:
+      val->val1 = data->mc_4p0;
+      val->val2 = 0;
+      return 0;
+    case SENSOR_CHAN_PM_MC_10p0:
+      val->val1 = data->mc_10p0;
+      val->val2 = 0;
+      return 0;
+    case SENSOR_CHAN_PM_NC_0p5:
+      val->val1 = data->nc_0p5;
+      val->val2 = 0;
+      return 0;
+    case SENSOR_CHAN_PM_NC_1p0:
+      val->val1 = data->nc_1p0;
+      val->val2 = 0;
+      return 0;
+    case SENSOR_CHAN_PM_NC_2p5:
+      val->val1 = data->nc_2p5;
+      val->val2 = 0;
+      return 0;
+    case SENSOR_CHAN_PM_NC_4p0:
+      val->val1 = data->nc_4p0;
+      val->val2 = 0;
+      return 0;
+    case SENSOR_CHAN_PM_NC_10p0:
+      val->val1 = data->nc_10p0;
+      val->val2 = 0;
+      return 0;
+    case SENSOR_CHAN_PM_TPS:
+      val->val1 = data->typical_particle_size;
+      val->val2 = 0;
+      return 0;
+    default:
+      return -ENOTSUP;
+    }
+  }
+  return -ENOTSUP;
 }
-
 
 static int sps30_attr_set(const struct device *dev, enum sensor_channel chan,
                           enum sensor_attribute attr,
                           const struct sensor_value *val) {
-  return 0;
+  return -ENOTSUP;
 }
-
 
 static int16_t sps30_read_product_type(const struct device *dev,
                                        int8_t *product_type,
@@ -645,10 +778,9 @@ static int16_t sps30_read_measurement_values_uint16(
 
 #define SPS30_CONFIG_I2C(inst)                                                 \
   {                                                                            \
-      .spec = I2C_DT_SPEC_INST_GET(inst),                                      \
-      .bus_io = &sps30_bus_io_i2c,                                             \
-      .measurement_output_format =                                             \
-          DT_INST_PROP(inst, measurement_output_format),                       \
+    .spec = I2C_DT_SPEC_INST_GET(inst), .bus_io = &sps30_bus_io_i2c,           \
+    .measurement_output_format =                                               \
+        DT_INST_PROP(inst, measurement_output_format),                         \
   }
 #define SPS30_DEFINE(inst)                                                     \
   static struct sps30_data sps30_data_##inst;                                  \
